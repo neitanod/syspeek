@@ -4,7 +4,6 @@ package collectors
 
 import (
 	"net"
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -37,27 +36,65 @@ func GetNetworkInfo() (NetworkInfo, error) {
 		return info, err
 	}
 
-	// Get network stats from netstat
-	statsMap := make(map[string]struct{ rx, tx uint64 })
+	// Get network stats using PowerShell
+	statsMap := make(map[string]struct {
+		rxBytes, txBytes uint64
+		rxSpeed, txSpeed uint64
+	})
 
-	// Use wmic for network stats
-	out, _ := exec.Command("wmic", "path", "Win32_PerfFormattedData_Tcpip_NetworkInterface", "get", "Name,BytesReceivedPerSec,BytesSentPerSec", "/value").Output()
-	blocks := strings.Split(string(out), "\r\n\r\n")
-	for _, block := range blocks {
-		var name string
-		var rx, tx uint64
-		for _, line := range strings.Split(block, "\n") {
+	// Get bytes per second (speed) from performance counters
+	script := `
+Get-CimInstance Win32_PerfFormattedData_Tcpip_NetworkInterface | ForEach-Object {
+    "$($_.Name)|$($_.BytesReceivedPerSec)|$($_.BytesSentPerSec)|$($_.BytesTotalPerSec)"
+}
+`
+	out, err := runPowerShell(script)
+	if err == nil {
+		for _, line := range strings.Split(out, "\n") {
 			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "Name=") {
-				name = strings.TrimPrefix(line, "Name=")
-			} else if strings.HasPrefix(line, "BytesReceivedPerSec=") {
-				rx, _ = strconv.ParseUint(strings.TrimPrefix(line, "BytesReceivedPerSec="), 10, 64)
-			} else if strings.HasPrefix(line, "BytesSentPerSec=") {
-				tx, _ = strconv.ParseUint(strings.TrimPrefix(line, "BytesSentPerSec="), 10, 64)
+			if line == "" {
+				continue
+			}
+			parts := strings.Split(line, "|")
+			if len(parts) >= 3 {
+				rxSpeed, _ := strconv.ParseUint(parts[1], 10, 64)
+				txSpeed, _ := strconv.ParseUint(parts[2], 10, 64)
+				statsMap[parts[0]] = struct {
+					rxBytes, txBytes uint64
+					rxSpeed, txSpeed uint64
+				}{0, 0, rxSpeed, txSpeed}
 			}
 		}
-		if name != "" {
-			statsMap[name] = struct{ rx, tx uint64 }{rx, tx}
+	}
+
+	// Get total bytes from network adapter stats
+	bytesScript := `
+Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface | ForEach-Object {
+    "$($_.Name)|$($_.BytesReceivedPerSec)|$($_.BytesSentPerSec)"
+}
+`
+	bytesOut, err := runPowerShell(bytesScript)
+	if err == nil {
+		for _, line := range strings.Split(bytesOut, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.Split(line, "|")
+			if len(parts) >= 3 {
+				rxBytes, _ := strconv.ParseUint(parts[1], 10, 64)
+				txBytes, _ := strconv.ParseUint(parts[2], 10, 64)
+				if existing, ok := statsMap[parts[0]]; ok {
+					existing.rxBytes = rxBytes
+					existing.txBytes = txBytes
+					statsMap[parts[0]] = existing
+				} else {
+					statsMap[parts[0]] = struct {
+						rxBytes, txBytes uint64
+						rxSpeed, txSpeed uint64
+					}{rxBytes, txBytes, 0, 0}
+				}
+			}
 		}
 	}
 
@@ -73,21 +110,39 @@ func GetNetworkInfo() (NetworkInfo, error) {
 			ni.IPAddresses = append(ni.IPAddresses, addr.String())
 		}
 
-		// Try to match interface name to WMIC output
-		for wmicName, stats := range statsMap {
-			if strings.Contains(wmicName, iface.Name) || strings.Contains(iface.Name, wmicName) {
-				ni.RxSpeed = stats.rx
-				ni.TxSpeed = stats.tx
+		// Try to match interface name to PowerShell output
+		// Windows interface names from PowerShell are different from Go's
+		for psName, stats := range statsMap {
+			// Try various matching strategies
+			if strings.Contains(strings.ToLower(psName), strings.ToLower(iface.Name)) ||
+				strings.Contains(strings.ToLower(iface.Name), strings.ToLower(psName)) ||
+				strings.ReplaceAll(psName, " ", "") == strings.ReplaceAll(iface.Name, " ", "") {
+				ni.RxBytes = stats.rxBytes
+				ni.TxBytes = stats.txBytes
+				ni.RxSpeed = stats.rxSpeed
+				ni.TxSpeed = stats.txSpeed
 				break
 			}
 		}
 
 		if !ni.IsLoopback && ni.IsUp {
+			info.TotalRxBytes += ni.RxBytes
+			info.TotalTxBytes += ni.TxBytes
 			info.TotalRxSpeed += ni.RxSpeed
 			info.TotalTxSpeed += ni.TxSpeed
 		}
 
 		info.Interfaces = append(info.Interfaces, ni)
+	}
+
+	// If no matches found for interfaces, just add stats directly from PS
+	if info.TotalRxSpeed == 0 && info.TotalTxSpeed == 0 {
+		for _, stats := range statsMap {
+			info.TotalRxSpeed += stats.rxSpeed
+			info.TotalTxSpeed += stats.txSpeed
+			info.TotalRxBytes += stats.rxBytes
+			info.TotalTxBytes += stats.txBytes
+		}
 	}
 
 	return info, nil
