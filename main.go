@@ -1,18 +1,26 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"embed"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"io/fs"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
+	"time"
 
 	"syspeek/api"
 	"syspeek/auth"
@@ -31,6 +39,9 @@ func main() {
 	printConfig := flag.Bool("print-config-file", false, "Print default config and exit")
 	port := flag.Int("port", 0, "Override port from config")
 	host := flag.String("host", "", "Override host from config")
+	https := flag.Bool("https", false, "Enable HTTPS with auto-generated self-signed certificate")
+	certFile := flag.String("cert", "", "Path to TLS certificate file (requires --key)")
+	keyFile := flag.String("key", "", "Path to TLS key file (requires --cert)")
 	flag.Parse()
 
 	// Handle --print-config-file
@@ -76,6 +87,17 @@ func main() {
 		cfg.Server.Host = "127.0.0.1"
 	}
 
+	// Handle HTTPS flags
+	useHTTPS := *https || (*certFile != "" && *keyFile != "")
+	if *certFile != "" && *keyFile != "" {
+		cfg.Server.SSL.Enabled = true
+		cfg.Server.SSL.Cert = *certFile
+		cfg.Server.SSL.Key = *keyFile
+	} else if *https {
+		cfg.Server.SSL.Enabled = true
+		// Will generate self-signed certificate
+	}
+
 	// Setup auth manager
 	authMgr := auth.NewAuthManager(cfg.Auth.Username, cfg.Auth.Password)
 	authMgr.StartCleanupRoutine()
@@ -89,7 +111,7 @@ func main() {
 
 	// Try to set higher priority (nice -5) for the service
 	// This requires appropriate permissions
-	if err := syscall.Setpriority(syscall.PRIO_PROCESS, 0, -5); err != nil {
+	if err := SetProcessPriority(-5); err != nil {
 		// Not critical if it fails - just log it
 		log.Printf("Note: Could not set service priority (requires elevated permissions)")
 	}
@@ -120,7 +142,7 @@ func main() {
 
 	// Build URL helper
 	scheme := "http"
-	if cfg.Server.SSL.Enabled {
+	if useHTTPS {
 		scheme = "https"
 	}
 
@@ -177,14 +199,32 @@ func main() {
 	}
 
 	// Start server using the listener we already have
-	fmt.Printf("Starting HTTP server on %s:%d\n", cfg.Server.Host, cfg.Server.Port)
+	if useHTTPS {
+		fmt.Printf("Starting HTTPS server on %s:%d\n", cfg.Server.Host, cfg.Server.Port)
 
-	if cfg.Server.SSL.Enabled {
-		// For TLS, we need to wrap the listener
-		listener.Close() // Close the TCP listener
-		addr := cfg.GetAddress()
-		err = http.ListenAndServeTLS(addr, cfg.Server.SSL.Cert, cfg.Server.SSL.Key, mux)
+		var tlsConfig *tls.Config
+		if cfg.Server.SSL.Cert != "" && cfg.Server.SSL.Key != "" {
+			// Use provided certificate
+			cert, err := tls.LoadX509KeyPair(cfg.Server.SSL.Cert, cfg.Server.SSL.Key)
+			if err != nil {
+				log.Fatalf("Error loading TLS certificate: %v", err)
+			}
+			tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+		} else {
+			// Generate self-signed certificate
+			fmt.Println("Generating self-signed certificate...")
+			cert, err := generateSelfSignedCert(cfg.Server.Host, displayHost)
+			if err != nil {
+				log.Fatalf("Error generating certificate: %v", err)
+			}
+			tlsConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+			fmt.Println("Warning: Using self-signed certificate. Browser will show security warning.")
+		}
+
+		tlsListener := tls.NewListener(listener, tlsConfig)
+		err = http.Serve(tlsListener, mux)
 	} else {
+		fmt.Printf("Starting HTTP server on %s:%d\n", cfg.Server.Host, cfg.Server.Port)
 		err = http.Serve(listener, mux)
 	}
 
@@ -223,4 +263,60 @@ func openBrowser(url string) {
 		fmt.Printf("Could not open browser: %v\n", err)
 		fmt.Printf("Please open %s manually\n", url)
 	}
+}
+
+// generateSelfSignedCert creates a self-signed TLS certificate
+func generateSelfSignedCert(host, displayHost string) (tls.Certificate, error) {
+	// Generate private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to generate private key: %v", err)
+	}
+
+	// Create certificate template
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to generate serial number: %v", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Syspeek"},
+			CommonName:   displayHost,
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	// Add hosts to certificate
+	hosts := []string{host, displayHost, "localhost", "127.0.0.1"}
+	for _, h := range hosts {
+		if ip := net.ParseIP(h); ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, h)
+		}
+	}
+
+	// Create certificate
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to create certificate: %v", err)
+	}
+
+	// Encode certificate and key to PEM
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	keyDER, err := x509.MarshalECPrivateKey(privateKey)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to marshal private key: %v", err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	// Create TLS certificate
+	return tls.X509KeyPair(certPEM, keyPEM)
 }

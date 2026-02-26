@@ -21,6 +21,11 @@ const app = createApp({
         const processes = ref({ processes: [], totalCount: 0 });
         const sockets = ref({ tcp: [], udp: [], unix: [] });
         const firewall = ref({});
+        const docker = ref({ containers: [], available: false });
+
+        // Global search
+        const globalSearch = ref('');
+        const activeTab = ref('overview'); // overview, processes, sockets, docker, firewall
 
         // UI state
         const paused = ref({
@@ -31,7 +36,8 @@ const app = createApp({
             gpu: false,
             processes: false,
             sockets: false,
-            firewall: false
+            firewall: false,
+            docker: false
         });
         const pausedAll = ref(false);
 
@@ -54,6 +60,10 @@ const app = createApp({
         const selectedGroup = ref(null);
         const groupMembers = ref([]);
         const groupLoading = ref(false);
+
+        // Docker modal
+        const selectedContainer = ref(null);
+        const containerLoading = ref(false);
 
         // Service PID (to prevent self-kill)
         const servicePid = ref(null);
@@ -98,12 +108,16 @@ const app = createApp({
         const connected = ref(true);
 
         // Computed
+        const effectiveFilter = computed(() => {
+            return globalSearch.value || processFilter.value;
+        });
+
         const filteredProcesses = computed(() => {
             let procs = processes.value.processes || [];
 
-            // Filter
-            if (processFilter.value) {
-                const filter = processFilter.value.toLowerCase();
+            // Filter (use global search or local filter)
+            const filter = effectiveFilter.value?.toLowerCase();
+            if (filter) {
                 procs = procs.filter(p =>
                     p.name?.toLowerCase().includes(filter) ||
                     p.command?.toLowerCase().includes(filter) ||
@@ -128,6 +142,40 @@ const app = createApp({
             });
 
             return procs.slice(0, 100); // Limit display
+        });
+
+        const filteredSockets = computed(() => {
+            const filter = globalSearch.value?.toLowerCase();
+            if (!filter) return currentSockets.value;
+
+            return currentSockets.value.filter(s =>
+                s.localAddr?.toLowerCase().includes(filter) ||
+                s.remoteAddr?.toLowerCase().includes(filter) ||
+                String(s.localPort).includes(filter) ||
+                String(s.remotePort).includes(filter) ||
+                s.processName?.toLowerCase().includes(filter) ||
+                String(s.pid).includes(filter) ||
+                s.state?.toLowerCase().includes(filter)
+            );
+        });
+
+        const filteredContainers = computed(() => {
+            const filter = globalSearch.value?.toLowerCase();
+            if (!filter) return docker.value.containers || [];
+
+            return (docker.value.containers || []).filter(c =>
+                c.name?.toLowerCase().includes(filter) ||
+                c.image?.toLowerCase().includes(filter) ||
+                c.id?.toLowerCase().includes(filter) ||
+                c.status?.toLowerCase().includes(filter)
+            );
+        });
+
+        const hasSearchResults = computed(() => {
+            if (!globalSearch.value) return true;
+            return filteredProcesses.value.length > 0 ||
+                   filteredSockets.value.length > 0 ||
+                   filteredContainers.value.length > 0;
         });
 
         const currentSockets = computed(() => {
@@ -515,6 +563,52 @@ const app = createApp({
             }
         };
 
+        // Docker functions
+        const showContainerDetail = async (containerId) => {
+            containerLoading.value = true;
+            selectedContainer.value = { id: containerId };
+
+            try {
+                const res = await fetch(`/api/docker/${encodeURIComponent(containerId)}`);
+                if (res.ok) {
+                    selectedContainer.value = await res.json();
+                } else {
+                    selectedContainer.value = { id: containerId, error: 'Failed to load container info' };
+                }
+            } catch (e) {
+                console.error('Failed to get container info:', e);
+                selectedContainer.value = { id: containerId, error: e.message };
+            } finally {
+                containerLoading.value = false;
+            }
+        };
+
+        const dockerAction = async (containerId, action) => {
+            const actionNames = { stop: 'Stop', start: 'Start', restart: 'Restart', kill: 'Kill' };
+            if (!confirm(`${actionNames[action]} container ${containerId.substring(0, 12)}?`)) return;
+
+            try {
+                const res = await fetch(`/api/docker/${encodeURIComponent(containerId)}/${action}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`Container ${action}ed successfully`, 'success');
+                    if (selectedContainer.value) {
+                        showContainerDetail(containerId);
+                    }
+                } else {
+                    showToast(data.message || `Failed to ${action} container`, 'error');
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        };
+
+        const clearGlobalSearch = () => {
+            globalSearch.value = '';
+        };
+
         // Alert system functions
         const requestNotificationPermission = async () => {
             if (!('Notification' in window)) {
@@ -710,6 +804,13 @@ const app = createApp({
                 }
             });
 
+            eventSource.addEventListener('docker', (e) => {
+                if (!paused.value.docker && !pausedAll.value) {
+                    const data = JSON.parse(e.data);
+                    docker.value = data.data;
+                }
+            });
+
             eventSource.onerror = () => {
                 // Prevent multiple reconnection attempts
                 if (reconnectTimeout) {
@@ -805,6 +906,7 @@ const app = createApp({
             processes,
             sockets,
             firewall,
+            docker,
 
             // UI state
             paused,
@@ -819,6 +921,8 @@ const app = createApp({
             ipLoading,
             selectedUser,
             userLoading,
+            globalSearch,
+            activeTab,
 
             // Toast
             toasts,
@@ -828,11 +932,18 @@ const app = createApp({
             groupMembers,
             groupLoading,
 
+            // Docker modal
+            selectedContainer,
+            containerLoading,
+
             // Service PID
             servicePid,
 
             // Computed
             filteredProcesses,
+            filteredSockets,
+            filteredContainers,
+            hasSearchResults,
             currentSockets,
 
             // Methods
@@ -869,7 +980,12 @@ const app = createApp({
             toggleAlert,
             updateAlertThreshold,
             togglePopover,
-            getAlertState
+            getAlertState,
+
+            // Docker
+            showContainerDetail,
+            dockerAction,
+            clearGlobalSearch
         };
     }
 });

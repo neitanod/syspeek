@@ -587,3 +587,82 @@ func SetServicePID(pid int) {
 func GetServicePID() int {
 	return servicePID
 }
+
+// Docker handlers
+func (a *API) HandleDocker(w http.ResponseWriter, r *http.Request) {
+	info := collectors.GetDockerInfo()
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (a *API) HandleDockerContainer(w http.ResponseWriter, r *http.Request) {
+	// Extract container ID from path: /api/docker/{id}
+	path := strings.TrimPrefix(r.URL.Path, "/api/docker/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Container ID required",
+		})
+		return
+	}
+
+	containerID := parts[0]
+
+	container, err := collectors.GetContainerDetail(containerID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, ActionResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, container)
+}
+
+func (a *API) HandleDockerAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Authentication is handled by middleware in routes.go
+
+	// Extract container ID and action from path: /api/docker/{id}/{action}
+	path := strings.TrimPrefix(r.URL.Path, "/api/docker/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Container ID and action required",
+		})
+		return
+	}
+
+	containerID := parts[0]
+	action := parts[1]
+
+	// Validate action
+	validActions := map[string]bool{"start": true, "stop": true, "restart": true, "kill": true}
+	if !validActions[action] {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Invalid action. Valid actions: start, stop, restart, kill",
+		})
+		return
+	}
+
+	err := collectors.DockerAction(containerID, action)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ActionResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, ActionResponse{
+		Success: true,
+		Message: "Container " + action + " successful",
+	})
+}

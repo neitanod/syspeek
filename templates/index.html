@@ -28,6 +28,10 @@
                 <span class="disconnected-badge" v-if="!connected && !pausedAll">Disconnected - Reconnecting...</span>
             </div>
             <div class="header-center">
+                <div class="global-search">
+                    <input type="text" v-model="globalSearch" placeholder="Search everywhere..." class="global-search-input">
+                    <button v-if="globalSearch" @click="clearGlobalSearch" class="clear-search">×</button>
+                </div>
                 <button @click="togglePauseAll" :class="{ active: pausedAll }" title="Pause all updates">
                     <span v-if="pausedAll">▶ Resume</span>
                     <span v-else>⏸ Pause</span>
@@ -495,8 +499,118 @@
                         </table>
                     </div>
                 </section>
+
+                <!-- Docker Panel (only visible when containers exist) -->
+                <section class="panel docker-panel" v-if="docker.available && docker.containers?.length > 0">
+                    <div class="panel-header">
+                        <h2>Docker ({{ docker.containers?.length || 0 }})</h2>
+                        <button @click="paused.docker = !paused.docker" class="pause-btn" :class="{ active: paused.docker }">
+                            {{ paused.docker ? '▶' : '⏸' }}
+                        </button>
+                    </div>
+                    <div class="panel-content">
+                        <table class="docker-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Image</th>
+                                    <th>Status</th>
+                                    <th>Ports</th>
+                                    <th v-if="authenticated">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="container in filteredContainers" :key="container.id" @click="showContainerDetail(container.id)" class="clickable">
+                                    <td>{{ container.name }}</td>
+                                    <td class="image-name">{{ container.image }}</td>
+                                    <td :class="'status-' + container.state?.toLowerCase()">{{ container.status }}</td>
+                                    <td class="ports">{{ container.ports }}</td>
+                                    <td v-if="authenticated" @click.stop>
+                                        <button v-if="container.state === 'running'" class="action-btn warning" @click="dockerAction(container.id, 'stop')">Stop</button>
+                                        <button v-else class="action-btn success" @click="dockerAction(container.id, 'start')">Start</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
             </div>
         </main>
+
+        <!-- Docker Container Detail Modal -->
+        <div v-if="selectedContainer" class="modal-overlay" @click.self="selectedContainer = null">
+            <div class="modal docker-detail-modal">
+                <div class="modal-header">
+                    <h2>Container: {{ selectedContainer.name || selectedContainer.id?.substring(0, 12) }}</h2>
+                    <button @click="selectedContainer = null" class="close-btn">×</button>
+                </div>
+                <div class="modal-content">
+                    <div v-if="containerLoading" class="loading">Loading container information...</div>
+                    <div v-else-if="selectedContainer.error" class="error">{{ selectedContainer.error }}</div>
+                    <div v-else class="detail-grid">
+                        <div class="detail-section">
+                            <h3>Basic Info</h3>
+                            <div class="detail-row"><span>ID:</span> <code>{{ selectedContainer.id?.substring(0, 12) }}</code></div>
+                            <div class="detail-row"><span>Name:</span> {{ selectedContainer.name }}</div>
+                            <div class="detail-row"><span>Image:</span> {{ selectedContainer.image }}</div>
+                            <div class="detail-row"><span>State:</span> <span :class="'status-' + selectedContainer.state?.toLowerCase()">{{ selectedContainer.state }}</span></div>
+                            <div class="detail-row"><span>Status:</span> {{ selectedContainer.status }}</div>
+                            <div class="detail-row"><span>Created:</span> {{ selectedContainer.created }}</div>
+                        </div>
+                        <div class="detail-section">
+                            <h3>Resources</h3>
+                            <div class="detail-row" v-if="selectedContainer.cpuPercent !== undefined"><span>CPU:</span> {{ selectedContainer.cpuPercent?.toFixed(2) }}%</div>
+                            <div class="detail-row" v-if="selectedContainer.memoryUsage"><span>Memory:</span> {{ formatBytes(selectedContainer.memoryUsage) }} / {{ formatBytes(selectedContainer.memoryLimit) }}</div>
+                            <div class="detail-row" v-if="selectedContainer.networkRx"><span>Network:</span> ↓{{ formatBytes(selectedContainer.networkRx) }} ↑{{ formatBytes(selectedContainer.networkTx) }}</div>
+                            <div class="detail-row" v-if="selectedContainer.pids"><span>PIDs:</span> {{ selectedContainer.pids }}</div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedContainer.ports?.length > 0">
+                            <h3>Port Mappings</h3>
+                            <div class="ports-list">
+                                <div v-for="port in selectedContainer.ports" :key="port.containerPort + port.protocol" class="port-item">
+                                    <span class="host-port" v-if="port.hostPort">{{ port.hostIp || '0.0.0.0' }}:{{ port.hostPort }}</span>
+                                    <span class="arrow" v-if="port.hostPort">→</span>
+                                    <span class="container-port">{{ port.containerPort }}/{{ port.protocol }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedContainer.mounts?.length > 0">
+                            <h3>Mounts</h3>
+                            <table class="mini-table">
+                                <tr v-for="mount in selectedContainer.mounts" :key="mount.destination">
+                                    <td class="mount-type">{{ mount.type }}</td>
+                                    <td class="mount-source"><code>{{ mount.source }}</code></td>
+                                    <td class="mount-arrow">→</td>
+                                    <td class="mount-dest"><code>{{ mount.destination }}</code></td>
+                                    <td class="mount-mode">{{ mount.mode }}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedContainer.env?.length > 0">
+                            <h3>Environment ({{ selectedContainer.env.length }})</h3>
+                            <div class="env-list">
+                                <div v-for="e in selectedContainer.env.slice(0, 20)" :key="e" class="env-item">
+                                    <code>{{ e }}</code>
+                                </div>
+                                <div v-if="selectedContainer.env.length > 20" class="more">
+                                    ... and {{ selectedContainer.env.length - 20 }} more
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedContainer.command">
+                            <h3>Command</h3>
+                            <code class="command-line">{{ selectedContainer.command }}</code>
+                        </div>
+                    </div>
+                    <div class="modal-actions" v-if="authenticated && selectedContainer.id">
+                        <button v-if="selectedContainer.state === 'running'" @click="dockerAction(selectedContainer.id, 'stop')" class="btn-warning">Stop</button>
+                        <button v-if="selectedContainer.state !== 'running'" @click="dockerAction(selectedContainer.id, 'start')" class="btn-success">Start</button>
+                        <button @click="dockerAction(selectedContainer.id, 'restart')" class="btn-primary">Restart</button>
+                        <button v-if="selectedContainer.state === 'running'" @click="dockerAction(selectedContainer.id, 'kill')" class="btn-danger">Kill</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Process Detail Modal -->
         <div v-if="selectedProcess" class="modal-overlay" @click.self="selectedProcess = null">
