@@ -1,6 +1,7 @@
 # Binaries
 syspeek
 syspeek-*
+syspeek_hash
 process-browser
 *.exe
 

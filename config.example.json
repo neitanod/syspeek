@@ -10,7 +10,9 @@
   },
   "auth": {
     "username": "admin",
-    "password": "your-secure-password"
+    "password": "HASH_FROM_SYSPEEK_HASH_COMMAND",
+    "readOnlyUsername": "viewer",
+    "readOnlyPassword": "HASH_FROM_SYSPEEK_HASH_COMMAND"
   },
   "ui": {
     "title": "Syspeek",
