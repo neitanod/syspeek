@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -83,6 +84,7 @@ var (
 	previousTime     time.Time
 	systemBootTime   int64
 	totalMemory      uint64
+	processMutex     sync.Mutex
 )
 
 func init() {
@@ -127,7 +129,9 @@ func GetProcessList() (*ProcessList, error) {
 	}
 
 	now := time.Now()
+	processMutex.Lock()
 	elapsed := now.Sub(previousTime).Seconds()
+	processMutex.Unlock()
 	if elapsed < 0.1 {
 		elapsed = 0.1
 	}
@@ -150,7 +154,9 @@ func GetProcessList() (*ProcessList, error) {
 		list.Processes = append(list.Processes, *proc)
 	}
 
+	processMutex.Lock()
 	previousTime = now
+	processMutex.Unlock()
 	list.TotalCount = len(list.Processes)
 
 	return list, nil
@@ -193,12 +199,14 @@ func getProcessBasic(pid int, elapsed float64) (*ProcessBasic, error) {
 	stime, _ := strconv.ParseUint(fields[12], 10, 64)
 	totalTicks := utime + stime
 
+	processMutex.Lock()
 	if prevTicks, exists := previousCPUTicks[pid]; exists {
 		ticksDelta := totalTicks - prevTicks
 		// Convert ticks to percentage (assuming 100 ticks/sec)
 		proc.CPUPercent = float64(ticksDelta) / elapsed
 	}
 	previousCPUTicks[pid] = totalTicks
+	processMutex.Unlock()
 
 	// Get start time
 	starttime, _ := strconv.ParseUint(fields[19], 10, 64)

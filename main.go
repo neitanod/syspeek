@@ -42,7 +42,21 @@ func main() {
 	https := flag.Bool("https", false, "Enable HTTPS with auto-generated self-signed certificate")
 	certFile := flag.String("cert", "", "Path to TLS certificate file (requires --key)")
 	keyFile := flag.String("key", "", "Path to TLS key file (requires --cert)")
+	public := flag.Bool("public", false, "Allow public read-only access without authentication")
+	flag.Bool("p", false, "Alias for --public")
+	admin := flag.Bool("admin", false, "Allow full admin access without authentication")
+	flag.Bool("a", false, "Alias for --admin")
 	flag.Parse()
+
+	// Handle aliases
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "p" {
+			*public = true
+		}
+		if f.Name == "a" {
+			*admin = true
+		}
+	})
 
 	// Handle --print-config-file
 	if *printConfig {
@@ -99,11 +113,21 @@ func main() {
 	}
 
 	// Setup auth manager
-	authMgr := auth.NewAuthManager(cfg.Auth.Username, cfg.Auth.Password)
+	authMgr := auth.NewAuthManager(
+		cfg.Auth.Username, cfg.Auth.Password,
+		cfg.Auth.ReadOnlyUsername, cfg.Auth.ReadOnlyPassword,
+		*public, *admin,
+	)
+
+	// Validate: if no auth configured and no public/admin mode, abort
+	if !authMgr.IsEnabled() && !*public && !*admin {
+		log.Fatalf("No users configured. Run with -p for public read-only mode or -a for public admin mode.")
+	}
+
 	authMgr.StartCleanupRoutine()
 
 	// Setup API
-	apiHandler := api.NewAPI(cfg, authMgr)
+	apiHandler := api.NewAPI(cfg, authMgr, *serve)
 
 	// Store service PID and try to set higher priority
 	pid := os.Getpid()
@@ -186,10 +210,19 @@ func main() {
 	fmt.Printf("Syspeek starting...\n")
 	fmt.Printf("URL: %s\n", url)
 
-	if authMgr.IsEnabled() {
-		fmt.Printf("Authentication: enabled\n")
+	// Print auth status
+	if authMgr.IsAdminMode() {
+		fmt.Printf("Mode: admin (no authentication required)\n")
+	} else if authMgr.IsPublic() {
+		if authMgr.HasReadWriteAuth() {
+			fmt.Printf("Mode: public read-only (login for read-write)\n")
+		} else {
+			fmt.Printf("Mode: public read-only (no admin configured)\n")
+		}
+	} else if authMgr.IsEnabled() {
+		fmt.Printf("Mode: login required\n")
 	} else {
-		fmt.Printf("Authentication: disabled (read-only mode)\n")
+		fmt.Printf("Mode: no authentication configured\n")
 	}
 
 	// Open browser if not in serve mode

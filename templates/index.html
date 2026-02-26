@@ -21,7 +21,7 @@
             </div>
         </div>
 
-        <header :style="theme === 'dark' ? { background: config.ui?.headerColor || 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' } : {}">
+        <header v-show="!maximizedPanel" :style="theme === 'dark' ? { background: config.ui?.headerColor || 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' } : {}">
             <div class="header-left">
                 <h1>{{ config.ui?.title || 'Syspeek' }}</h1>
                 <span class="uptime" v-if="cpu.uptime">up {{ cpu.uptime }}</span>
@@ -32,36 +32,37 @@
                     <input type="text" v-model="globalSearch" placeholder="Search everywhere..." class="global-search-input">
                     <button v-if="globalSearch" @click="clearGlobalSearch" class="clear-search">×</button>
                 </div>
-                <button @click="togglePauseAll" :class="{ active: pausedAll }" title="Pause all updates">
-                    <span v-if="pausedAll">▶ Resume</span>
-                    <span v-else>⏸ Pause</span>
-                </button>
             </div>
             <div class="header-right">
+                <button @click="togglePauseAll" :class="{ active: pausedAll }" :title="pausedAll ? 'Resume all' : 'Pause all'">
+                    {{ pausedAll ? '▶' : '❚❚' }}
+                </button>
                 <button @click="toggleCompact" :class="{ active: compact }" title="Compact mode">
                     {{ compact ? '▢' : '▣' }}
                 </button>
                 <button @click="toggleTheme" title="Toggle theme">
                     {{ theme === 'dark' ? '☀' : '☾' }}
                 </button>
-                <template v-if="config.authEnabled">
-                    <template v-if="authenticated">
-                        <span class="user">{{ username }}</span>
-                        <button @click="logout">Logout</button>
-                    </template>
-                    <button v-else @click="showLogin = true">Login</button>
+                <template v-if="authenticated">
+                    <span v-if="readWrite" class="admin-badge">Admin</span>
+                    <span v-else class="readonly-badge">Read Only</span>
+                    <span class="user">{{ username }}</span>
+                    <button @click="logout">Logout</button>
                 </template>
-                <span v-else class="readonly-badge">Read Only</span>
+                <template v-else-if="hasReadWriteAuth || !isPublic">
+                    <button @click="showLogin = true">Login</button>
+                </template>
+                <span v-else class="readonly-badge">Public</span>
             </div>
         </header>
 
-        <main :class="{ compact: compact }">
+        <main :class="{ compact: compact, maximized: maximizedPanel }">
             <!-- Top row: CPU, Memory, GPU, Disks -->
             <div class="row top-row">
-                <section class="panel cpu-panel">
+                <section class="panel cpu-panel" v-show="!maximizedPanel || maximizedPanel === 'cpu'" :class="{ 'panel-maximized': maximizedPanel === 'cpu' }">
                     <div class="panel-header">
                         <h2>CPU</h2>
-                        <div class="alert-bells">
+                        <div class="panel-controls">
                             <div class="alert-bell-wrapper">
                                 <button class="alert-bell" :class="getAlertState('cpu')" @click.stop="togglePopover('cpu')" title="CPU usage alert">
                                     <span class="bell-icon">🔔</span>
@@ -98,10 +99,13 @@
                                     </div>
                                 </div>
                             </div>
+                            <button @click="paused.cpu = !paused.cpu" class="pause-btn" :class="{ active: paused.cpu }">
+                                {{ paused.cpu ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('cpu')" :title="maximizedPanel === 'cpu' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'cpu' ? '🗗' : '🗖' }}
+                            </button>
                         </div>
-                        <button @click="paused.cpu = !paused.cpu" class="pause-btn" :class="{ active: paused.cpu }">
-                            {{ paused.cpu ? '▶' : '⏸' }}
-                        </button>
                     </div>
                     <div class="panel-content">
                         <div class="cpu-info">
@@ -129,10 +133,10 @@
                     </div>
                 </section>
 
-                <section class="panel memory-panel">
+                <section class="panel memory-panel" v-show="!maximizedPanel || maximizedPanel === 'memory'" :class="{ 'panel-maximized': maximizedPanel === 'memory' }">
                     <div class="panel-header">
                         <h2>Memory</h2>
-                        <div class="alert-bells">
+                        <div class="panel-controls">
                             <div class="alert-bell-wrapper">
                                 <button class="alert-bell" :class="getAlertState('ram')" @click.stop="togglePopover('ram')" title="RAM usage alert">
                                     <span class="bell-icon">🔔</span>
@@ -169,10 +173,13 @@
                                     </div>
                                 </div>
                             </div>
+                            <button @click="paused.memory = !paused.memory" class="pause-btn" :class="{ active: paused.memory }">
+                                {{ paused.memory ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('memory')" :title="maximizedPanel === 'memory' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'memory' ? '🗗' : '🗖' }}
+                            </button>
                         </div>
-                        <button @click="paused.memory = !paused.memory" class="pause-btn" :class="{ active: paused.memory }">
-                            {{ paused.memory ? '▶' : '⏸' }}
-                        </button>
                     </div>
                     <div class="panel-content">
                         <div class="memory-main">
@@ -200,10 +207,10 @@
                     </div>
                 </section>
 
-                <section class="panel gpu-panel" v-if="gpu.available">
+                <section class="panel gpu-panel" v-if="gpu.available" v-show="!maximizedPanel || maximizedPanel === 'gpu'" :class="{ 'panel-maximized': maximizedPanel === 'gpu' }">
                     <div class="panel-header">
                         <h2>GPU</h2>
-                        <div class="alert-bells">
+                        <div class="panel-controls">
                             <div class="alert-bell-wrapper">
                                 <button class="alert-bell" :class="getAlertState('gpuUsage')" @click.stop="togglePopover('gpuUsage')" title="GPU usage alert">
                                     <span class="bell-icon">🔔</span>
@@ -258,10 +265,13 @@
                                     </div>
                                 </div>
                             </div>
+                            <button @click="paused.gpu = !paused.gpu" class="pause-btn" :class="{ active: paused.gpu }">
+                                {{ paused.gpu ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('gpu')" :title="maximizedPanel === 'gpu' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'gpu' ? '🗗' : '🗖' }}
+                            </button>
                         </div>
-                        <button @click="paused.gpu = !paused.gpu" class="pause-btn" :class="{ active: paused.gpu }">
-                            {{ paused.gpu ? '▶' : '⏸' }}
-                        </button>
                     </div>
                     <div class="panel-content">
                         <div class="gpu-name">{{ gpu.name }}</div>
@@ -287,10 +297,10 @@
                     </div>
                 </section>
 
-                <section class="panel disk-panel">
+                <section class="panel disk-panel" v-show="!maximizedPanel || maximizedPanel === 'disk'" :class="{ 'panel-maximized': maximizedPanel === 'disk' }">
                     <div class="panel-header">
                         <h2>Disks</h2>
-                        <div class="alert-bells">
+                        <div class="panel-controls">
                             <div class="alert-bell-wrapper">
                                 <button class="alert-bell" :class="getAlertState('disk')" @click.stop="togglePopover('disk')" title="Disk usage alert">
                                     <span class="bell-icon">🔔</span>
@@ -309,10 +319,13 @@
                                     </div>
                                 </div>
                             </div>
+                            <button @click="paused.disk = !paused.disk" class="pause-btn" :class="{ active: paused.disk }">
+                                {{ paused.disk ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('disk')" :title="maximizedPanel === 'disk' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'disk' ? '🗗' : '🗖' }}
+                            </button>
                         </div>
-                        <button @click="paused.disk = !paused.disk" class="pause-btn" :class="{ active: paused.disk }">
-                            {{ paused.disk ? '▶' : '⏸' }}
-                        </button>
                     </div>
                     <div class="panel-content">
                         <div class="disk-list">
@@ -343,13 +356,16 @@
 
             <!-- Main content: Processes (left) + Network (right) -->
             <div class="row main-row">
-                <section class="panel processes-panel">
+                <section class="panel processes-panel" v-show="!maximizedPanel || maximizedPanel === 'processes'" :class="{ 'panel-maximized': maximizedPanel === 'processes' }">
                     <div class="panel-header">
                         <h2>Processes ({{ processes.totalCount || 0 }})</h2>
                         <div class="process-controls">
                             <input type="text" v-model="processFilter" placeholder="Filter..." class="filter-input">
                             <button @click="paused.processes = !paused.processes" class="pause-btn" :class="{ active: paused.processes }">
-                                {{ paused.processes ? '▶' : '⏸' }}
+                                {{ paused.processes ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('processes')" :title="maximizedPanel === 'processes' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'processes' ? '🗗' : '🗖' }}
                             </button>
                         </div>
                     </div>
@@ -365,7 +381,7 @@
                                     <th @click="sortBy('memoryBytes')" :class="{ sorted: sortKey === 'memoryBytes' }">Memory</th>
                                     <th @click="sortBy('threads')" :class="{ sorted: sortKey === 'threads' }">Thr</th>
                                     <th>Command</th>
-                                    <th v-if="authenticated">Actions</th>
+                                    <th v-if="readWrite">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -378,7 +394,7 @@
                                     <td>{{ formatBytes(proc.memoryBytes) }}</td>
                                     <td>{{ proc.threads }}</td>
                                     <td class="command">{{ proc.command }}</td>
-                                    <td v-if="authenticated" @click.stop>
+                                    <td v-if="readWrite" @click.stop>
                                         <button v-if="!isServiceProcess(proc.pid)" class="action-btn kill" @click="quickKillProcess(proc.pid, proc.name)">Kill</button>
                                         <span v-else class="service-badge">Service</span>
                                     </td>
@@ -388,12 +404,17 @@
                     </div>
                 </section>
 
-                <section class="panel network-panel">
+                <section class="panel network-panel" v-show="!maximizedPanel || maximizedPanel === 'network'" :class="{ 'panel-maximized': maximizedPanel === 'network' }">
                     <div class="panel-header">
                         <h2>Network</h2>
-                        <button @click="paused.network = !paused.network" class="pause-btn" :class="{ active: paused.network }">
-                            {{ paused.network ? '▶' : '⏸' }}
-                        </button>
+                        <div class="panel-controls">
+                            <button @click="paused.network = !paused.network" class="pause-btn" :class="{ active: paused.network }">
+                                {{ paused.network ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('network')" :title="maximizedPanel === 'network' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'network' ? '🗗' : '🗖' }}
+                            </button>
+                        </div>
                     </div>
                     <div class="panel-content">
                         <div class="net-total">
@@ -406,7 +427,7 @@
                             </div>
                         </div>
                         <div class="interfaces">
-                            <div v-for="iface in network.interfaces" :key="iface.name" class="iface-item" :class="{ down: !iface.isUp }">
+                            <div v-for="iface in filteredInterfaces" :key="iface.name" class="iface-item" :class="{ down: !iface.isUp }">
                                 <div class="iface-header">
                                     <span class="iface-name">{{ iface.name }}</span>
                                     <span class="iface-status">{{ iface.isUp ? '●' : '○' }}</span>
@@ -423,18 +444,71 @@
                 </section>
             </div>
 
+            <!-- Docker row -->
+            <div class="row docker-row" v-if="docker.available && docker.containers?.length > 0">
+                <section class="panel docker-panel" v-show="!maximizedPanel || maximizedPanel === 'docker'" :class="{ 'panel-maximized': maximizedPanel === 'docker' }">
+                    <div class="panel-header">
+                        <h2>Docker ({{ docker.containers?.length || 0 }})</h2>
+                        <div class="panel-controls">
+                            <button @click="paused.docker = !paused.docker" class="pause-btn" :class="{ active: paused.docker }">
+                                {{ paused.docker ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('docker')" :title="maximizedPanel === 'docker' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'docker' ? '🗗' : '🗖' }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-content">
+                        <table class="docker-table">
+                            <thead>
+                                <tr>
+                                    <th class="status-icon-col"></th>
+                                    <th>Name</th>
+                                    <th>Image</th>
+                                    <th>Status</th>
+                                    <th>Ports</th>
+                                    <th v-if="readWrite">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="container in filteredContainers" :key="container.id" @click="showContainerDetail(container.id)" class="clickable">
+                                    <td class="status-icon-cell">
+                                        <span v-if="container.state === 'running'" class="status-icon running" title="Running">●</span>
+                                        <span v-else-if="container.exitCode > 0" class="status-icon error" title="Exited with error">⚠</span>
+                                        <span v-else class="status-icon stopped" title="Stopped">●</span>
+                                    </td>
+                                    <td>{{ container.name }}</td>
+                                    <td class="image-name">{{ container.image }}</td>
+                                    <td :class="'status-' + container.state?.toLowerCase()">{{ container.status }}</td>
+                                    <td class="ports">{{ container.ports }}</td>
+                                    <td v-if="readWrite" @click.stop>
+                                        <button v-if="container.state === 'running'" class="action-btn warning" @click="dockerAction(container.id, 'stop')">Stop</button>
+                                        <button v-else class="action-btn success" @click="dockerAction(container.id, 'start')">Start</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
             <!-- Bottom row: Sockets, Firewall -->
             <div class="row bottom-row">
-                <section class="panel sockets-panel">
+                <section class="panel sockets-panel" v-show="!maximizedPanel || maximizedPanel === 'sockets'" :class="{ 'panel-maximized': maximizedPanel === 'sockets' }">
                     <div class="panel-header">
                         <h2>Sockets ({{ sockets.total || 0 }})</h2>
                         <div class="socket-stats">
                             <span class="listen">Listen: {{ sockets.listen || 0 }}</span>
                             <span class="established">Established: {{ sockets.established || 0 }}</span>
                         </div>
-                        <button @click="paused.sockets = !paused.sockets" class="pause-btn" :class="{ active: paused.sockets }">
-                            {{ paused.sockets ? '▶' : '⏸' }}
-                        </button>
+                        <div class="panel-controls">
+                            <button @click="paused.sockets = !paused.sockets" class="pause-btn" :class="{ active: paused.sockets }">
+                                {{ paused.sockets ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('sockets')" :title="maximizedPanel === 'sockets' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'sockets' ? '🗗' : '🗖' }}
+                            </button>
+                        </div>
                     </div>
                     <div class="panel-content">
                         <div class="socket-tabs">
@@ -452,7 +526,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="(sock, i) in currentSockets" :key="i">
+                                <tr v-for="(sock, i) in filteredSockets" :key="i">
                                     <td>{{ sock.protocol }}</td>
                                     <td><span class="ip-link" v-if="sock.localAddr !== '0.0.0.0' && sock.localAddr !== '::'" @click.stop="showIPInfo(sock.localAddr)">{{ sock.localAddr }}</span><span v-else>{{ sock.localAddr }}</span>:{{ sock.localPort }}</td>
                                     <td><span class="ip-link" v-if="sock.remoteAddr && sock.remoteAddr !== '*' && sock.remoteAddr !== '0.0.0.0' && sock.remoteAddr !== '::'" @click.stop="showIPInfo(sock.remoteAddr)">{{ sock.remoteAddr }}</span><span v-else>{{ sock.remoteAddr }}</span>:{{ sock.remotePort }}</td>
@@ -464,16 +538,21 @@
                     </div>
                 </section>
 
-                <section class="panel firewall-panel">
+                <section class="panel firewall-panel" v-show="!maximizedPanel || maximizedPanel === 'firewall'" :class="{ 'panel-maximized': maximizedPanel === 'firewall' }">
                     <div class="panel-header">
                         <h2>Firewall</h2>
                         <span class="fw-backend" v-if="firewall.available">{{ firewall.backend }}</span>
                         <span class="fw-status" :class="{ active: firewall.active }">
                             {{ firewall.active ? 'Active' : 'Inactive' }}
                         </span>
-                        <button @click="paused.firewall = !paused.firewall" class="pause-btn" :class="{ active: paused.firewall }">
-                            {{ paused.firewall ? '▶' : '⏸' }}
-                        </button>
+                        <div class="panel-controls">
+                            <button @click="paused.firewall = !paused.firewall" class="pause-btn" :class="{ active: paused.firewall }">
+                                {{ paused.firewall ? '▶' : '❚❚' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('firewall')" :title="maximizedPanel === 'firewall' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'firewall' ? '🗗' : '🗖' }}
+                            </button>
+                        </div>
                     </div>
                     <div class="panel-content">
                         <div v-if="!firewall.available" class="no-firewall">
@@ -499,50 +578,15 @@
                         </table>
                     </div>
                 </section>
-
-                <!-- Docker Panel (only visible when containers exist) -->
-                <section class="panel docker-panel" v-if="docker.available && docker.containers?.length > 0">
-                    <div class="panel-header">
-                        <h2>Docker ({{ docker.containers?.length || 0 }})</h2>
-                        <button @click="paused.docker = !paused.docker" class="pause-btn" :class="{ active: paused.docker }">
-                            {{ paused.docker ? '▶' : '⏸' }}
-                        </button>
-                    </div>
-                    <div class="panel-content">
-                        <table class="docker-table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Image</th>
-                                    <th>Status</th>
-                                    <th>Ports</th>
-                                    <th v-if="authenticated">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="container in filteredContainers" :key="container.id" @click="showContainerDetail(container.id)" class="clickable">
-                                    <td>{{ container.name }}</td>
-                                    <td class="image-name">{{ container.image }}</td>
-                                    <td :class="'status-' + container.state?.toLowerCase()">{{ container.status }}</td>
-                                    <td class="ports">{{ container.ports }}</td>
-                                    <td v-if="authenticated" @click.stop>
-                                        <button v-if="container.state === 'running'" class="action-btn warning" @click="dockerAction(container.id, 'stop')">Stop</button>
-                                        <button v-else class="action-btn success" @click="dockerAction(container.id, 'start')">Start</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
             </div>
         </main>
 
         <!-- Docker Container Detail Modal -->
-        <div v-if="selectedContainer" class="modal-overlay" @click.self="selectedContainer = null">
+        <div v-if="selectedContainer" class="modal-overlay" @click.self="selectedContainer = null; showAllEnv = false">
             <div class="modal docker-detail-modal">
                 <div class="modal-header">
                     <h2>Container: {{ selectedContainer.name || selectedContainer.id?.substring(0, 12) }}</h2>
-                    <button @click="selectedContainer = null" class="close-btn">×</button>
+                    <button @click="selectedContainer = null; showAllEnv = false" class="close-btn">×</button>
                 </div>
                 <div class="modal-content">
                     <div v-if="containerLoading" class="loading">Loading container information...</div>
@@ -589,11 +633,11 @@
                         <div class="detail-section full-width" v-if="selectedContainer.env?.length > 0">
                             <h3>Environment ({{ selectedContainer.env.length }})</h3>
                             <div class="env-list">
-                                <div v-for="e in selectedContainer.env.slice(0, 20)" :key="e" class="env-item">
+                                <div v-for="e in (showAllEnv ? selectedContainer.env : selectedContainer.env.slice(0, 20))" :key="e" class="env-item">
                                     <code>{{ e }}</code>
                                 </div>
-                                <div v-if="selectedContainer.env.length > 20" class="more">
-                                    ... and {{ selectedContainer.env.length - 20 }} more
+                                <div v-if="!showAllEnv && selectedContainer.env.length > 20" class="more">
+                                    ... and <a href="#" @click.prevent="showAllEnv = true">{{ selectedContainer.env.length - 20 }} more</a>
                                 </div>
                             </div>
                         </div>
@@ -601,8 +645,31 @@
                             <h3>Command</h3>
                             <code class="command-line">{{ selectedContainer.command }}</code>
                         </div>
+                        <div class="detail-section full-width" v-if="selectedContainer.labels && Object.keys(selectedContainer.labels).length > 0">
+                            <h3>Labels / Compose Info</h3>
+                            <div class="compose-info" v-if="hasComposeLabels(selectedContainer.labels)">
+                                <div class="detail-row" v-if="selectedContainer.labels['com.docker.compose.project']">
+                                    <span>Compose Project:</span> <strong>{{ selectedContainer.labels['com.docker.compose.project'] }}</strong>
+                                </div>
+                                <div class="detail-row" v-if="selectedContainer.labels['com.docker.compose.service']">
+                                    <span>Service:</span> <strong>{{ selectedContainer.labels['com.docker.compose.service'] }}</strong>
+                                </div>
+                                <div class="detail-row" v-if="selectedContainer.labels['com.docker.compose.project.config_files']">
+                                    <span>Config File:</span> <code>{{ selectedContainer.labels['com.docker.compose.project.config_files'] }}</code>
+                                </div>
+                                <div class="detail-row" v-if="selectedContainer.labels['com.docker.compose.project.working_dir']">
+                                    <span>Working Dir:</span> <code>{{ selectedContainer.labels['com.docker.compose.project.working_dir'] }}</code>
+                                </div>
+                            </div>
+                            <div class="labels-list">
+                                <div v-for="(value, key) in filteredLabels(selectedContainer.labels)" :key="key" class="label-item">
+                                    <span class="label-key">{{ key }}</span>
+                                    <span class="label-value"><code>{{ value }}</code></span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="modal-actions" v-if="authenticated && selectedContainer.id">
+                    <div class="modal-actions" v-if="readWrite && selectedContainer.id">
                         <button v-if="selectedContainer.state === 'running'" @click="dockerAction(selectedContainer.id, 'stop')" class="btn-warning">Stop</button>
                         <button v-if="selectedContainer.state !== 'running'" @click="dockerAction(selectedContainer.id, 'start')" class="btn-success">Start</button>
                         <button @click="dockerAction(selectedContainer.id, 'restart')" class="btn-primary">Restart</button>
@@ -613,11 +680,11 @@
         </div>
 
         <!-- Process Detail Modal -->
-        <div v-if="selectedProcess" class="modal-overlay" @click.self="selectedProcess = null">
+        <div v-if="selectedProcess" class="modal-overlay" @click.self="selectedProcess = null; showAllFds = false">
             <div class="modal process-detail-modal">
                 <div class="modal-header">
                     <h2>Process {{ selectedProcess.pid }}: {{ selectedProcess.name }}</h2>
-                    <button @click="selectedProcess = null" class="close-btn">×</button>
+                    <button @click="selectedProcess = null; showAllFds = false" class="close-btn">×</button>
                 </div>
                 <div class="modal-content">
                     <div class="detail-grid">
@@ -653,8 +720,8 @@
                             <div class="detail-row"><span>I/O Read:</span> {{ formatBytes(selectedProcess.ioReadBytes) }}</div>
                             <div class="detail-row"><span>I/O Write:</span> {{ formatBytes(selectedProcess.ioWriteBytes) }}</div>
                         </div>
-                        <!-- Network Connections and File Descriptors - side by side -->
-                        <div class="detail-section" v-if="selectedProcess.connections?.length > 0">
+                        <!-- Network Connections -->
+                        <div class="detail-section full-width" v-if="selectedProcess.connections?.length > 0">
                             <h3>Network Connections ({{ selectedProcess.connections.length }})</h3>
                             <table class="mini-table">
                                 <tr v-for="(conn, i) in selectedProcess.connections" :key="i">
@@ -666,16 +733,16 @@
                                 </tr>
                             </table>
                         </div>
-                        <div class="detail-section" v-if="selectedProcess.fds?.length > 0">
+                        <div class="detail-section full-width" v-if="selectedProcess.fds?.length > 0">
                             <h3>File Descriptors ({{ selectedProcess.fds.length }})</h3>
                             <div class="fd-list">
-                                <div v-for="fd in selectedProcess.fds.slice(0, 50)" :key="fd.fd" class="fd-item">
+                                <div v-for="fd in (showAllFds ? selectedProcess.fds : selectedProcess.fds.slice(0, 50))" :key="fd.fd" class="fd-item">
                                     <span class="fd-num">{{ fd.fd }}</span>
                                     <span class="fd-type">{{ fd.type }}</span>
                                     <span class="fd-target">{{ fd.target }}</span>
                                 </div>
-                                <div v-if="selectedProcess.fds.length > 50" class="more">
-                                    ... and {{ selectedProcess.fds.length - 50 }} more
+                                <div v-if="!showAllFds && selectedProcess.fds.length > 50" class="more">
+                                    ... and <a href="#" @click.prevent="showAllFds = true">{{ selectedProcess.fds.length - 50 }} more</a>
                                 </div>
                             </div>
                         </div>
@@ -687,7 +754,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="modal-actions" v-if="authenticated">
+                    <div class="modal-actions" v-if="readWrite">
                         <button @click="killProcess(selectedProcess.pid, 15)" class="btn-warning">Send SIGTERM</button>
                         <button @click="killProcess(selectedProcess.pid, 9)" class="btn-danger">Send SIGKILL</button>
                         <div class="renice-control">
@@ -701,11 +768,11 @@
         </div>
 
         <!-- Login Modal -->
-        <div v-if="showLogin" class="modal-overlay" @click.self="showLogin = false">
+        <div v-if="showLogin" class="modal-overlay" @click.self="!requiresLogin && (showLogin = false)">
             <div class="modal login-modal">
                 <div class="modal-header">
                     <h2>Login</h2>
-                    <button @click="showLogin = false" class="close-btn">×</button>
+                    <button v-if="!requiresLogin" @click="showLogin = false" class="close-btn">×</button>
                 </div>
                 <div class="modal-content">
                     <form @submit.prevent="login">
@@ -796,12 +863,12 @@
                             <div class="detail-row" v-if="!authenticated"><span>Home:</span> <code>{{ selectedUser.homeDir }}</code></div>
                             <div class="detail-row" v-if="!authenticated"><span>Shell:</span> <code>{{ selectedUser.shell }}</code></div>
                             <!-- Editable fields when authenticated -->
-                            <div class="detail-row editable-field" v-if="authenticated">
+                            <div class="detail-row editable-field" v-if="readWrite">
                                 <span>Home:</span>
                                 <input type="text" :value="selectedUser.homeDir" @keyup.enter="modifyUser(selectedUser.username, 'home', $event.target.value)" placeholder="Home directory">
                                 <button @click="modifyUser(selectedUser.username, 'home', $event.target.previousElementSibling.value)">Save</button>
                             </div>
-                            <div class="detail-row editable-field" v-if="authenticated">
+                            <div class="detail-row editable-field" v-if="readWrite">
                                 <span>Shell:</span>
                                 <input type="text" :value="selectedUser.shell" @keyup.enter="modifyUser(selectedUser.username, 'shell', $event.target.value)" placeholder="Shell">
                                 <button @click="modifyUser(selectedUser.username, 'shell', $event.target.previousElementSibling.value)">Save</button>
@@ -856,7 +923,7 @@
                             <div class="groups-list">
                                 <div v-for="member in selectedGroup.members" :key="member" class="group-member">
                                     <span class="user-link" @click="showUserInfo(member)">{{ member }}</span>
-                                    <button v-if="authenticated" class="action-btn kill" @click="removeUserFromGroup(selectedGroup.name, member)">Remove</button>
+                                    <button v-if="readWrite" class="action-btn kill" @click="removeUserFromGroup(selectedGroup.name, member)">Remove</button>
                                 </div>
                             </div>
                         </div>
