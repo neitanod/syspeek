@@ -1,0 +1,32 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 9876,
+    "ssl": {
+      "enabled": false,
+      "cert": "/path/to/cert.pem",
+      "key": "/path/to/key.pem"
+    }
+  },
+  "auth": {
+    "username": "admin",
+    "password": "your-secure-password"
+  },
+  "ui": {
+    "title": "Syspeek",
+    "headerColor": "#1a1a2e",
+    "favicon": "",
+    "theme": "dark",
+    "compactMode": false
+  },
+  "refresh": {
+    "cpu": 5000,
+    "memory": 5000,
+    "disk": 5000,
+    "network": 5000,
+    "gpu": 5000,
+    "processes": 5000,
+    "sockets": 5000,
+    "firewall": 10000
+  }
+}

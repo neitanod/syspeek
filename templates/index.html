@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Syspeek</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/vendor/vue.global.prod.js"></script>
+    <script src="/static/vendor/chart.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- Toast notifications -->
+        <div class="toast-container">
+            <div v-for="toast in toasts" :key="toast.id"
+                 :class="['toast', 'toast-' + toast.type]"
+                 @click="removeToast(toast.id)">
+                <span class="toast-message">{{ toast.message }}</span>
+                <button class="toast-close">&times;</button>
+            </div>
+        </div>
+
+        <header :style="theme === 'dark' ? { background: config.ui?.headerColor || 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' } : {}">
+            <div class="header-left">
+                <h1>{{ config.ui?.title || 'Syspeek' }}</h1>
+                <span class="uptime" v-if="cpu.uptime">up {{ cpu.uptime }}</span>
+                <span class="disconnected-badge" v-if="!connected && !pausedAll">Disconnected - Reconnecting...</span>
+            </div>
+            <div class="header-center">
+                <button @click="togglePauseAll" :class="{ active: pausedAll }" title="Pause all updates">
+                    <span v-if="pausedAll">▶ Resume</span>
+                    <span v-else>⏸ Pause</span>
+                </button>
+            </div>
+            <div class="header-right">
+                <button @click="toggleCompact" :class="{ active: compact }" title="Compact mode">
+                    {{ compact ? '▢' : '▣' }}
+                </button>
+                <button @click="toggleTheme" title="Toggle theme">
+                    {{ theme === 'dark' ? '☀' : '☾' }}
+                </button>
+                <template v-if="config.authEnabled">
+                    <template v-if="authenticated">
+                        <span class="user">{{ username }}</span>
+                        <button @click="logout">Logout</button>
+                    </template>
+                    <button v-else @click="showLogin = true">Login</button>
+                </template>
+                <span v-else class="readonly-badge">Read Only</span>
+            </div>
+        </header>
+
+        <main :class="{ compact: compact }">
+            <!-- Top row: CPU, Memory, GPU, Disks -->
+            <div class="row top-row">
+                <section class="panel cpu-panel">
+                    <div class="panel-header">
+                        <h2>CPU</h2>
+                        <div class="alert-bells">
+                            <div class="alert-bell-wrapper">
+                                <button class="alert-bell" :class="getAlertState('cpu')" @click.stop="togglePopover('cpu')" title="CPU usage alert">
+                                    <span class="bell-icon">🔔</span>
+                                    <span class="bell-label">CPU</span>
+                                </button>
+                                <div class="alert-popover" v-if="activePopover === 'cpu'" @click.stop>
+                                    <div class="popover-header">CPU Alert</div>
+                                    <label class="popover-toggle">
+                                        <input type="checkbox" :checked="alerts.cpu.enabled" @change="toggleAlert('cpu')">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <div class="popover-threshold">
+                                        <span>Threshold:</span>
+                                        <input type="number" :value="alerts.cpu.threshold" @change="updateAlertThreshold('cpu', $event.target.value)" min="0" max="100">
+                                        <span>%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="alert-bell-wrapper">
+                                <button class="alert-bell" :class="getAlertState('temp')" @click.stop="togglePopover('temp')" title="Temperature alert">
+                                    <span class="bell-icon">🔔</span>
+                                    <span class="bell-label">Temp</span>
+                                </button>
+                                <div class="alert-popover" v-if="activePopover === 'temp'" @click.stop>
+                                    <div class="popover-header">Temperature Alert</div>
+                                    <label class="popover-toggle">
+                                        <input type="checkbox" :checked="alerts.temp.enabled" @change="toggleAlert('temp')">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <div class="popover-threshold">
+                                        <span>Threshold:</span>
+                                        <input type="number" :value="alerts.temp.threshold" @change="updateAlertThreshold('temp', $event.target.value)" min="0" max="100">
+                                        <span>°C</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="paused.cpu = !paused.cpu" class="pause-btn" :class="{ active: paused.cpu }">
+                            {{ paused.cpu ? '▶' : '⏸' }}
+                        </button>
+                    </div>
+                    <div class="panel-content">
+                        <div class="cpu-info">
+                            <span class="cpu-model">{{ cpu.model }}</span>
+                            <span class="cpu-usage">{{ cpu.usagePercent?.toFixed(1) }}%</span>
+                        </div>
+                        <div class="load-avg" v-if="cpu.loadAvg">
+                            Load: {{ cpu.loadAvg[0]?.toFixed(2) }} {{ cpu.loadAvg[1]?.toFixed(2) }} {{ cpu.loadAvg[2]?.toFixed(2) }}
+                        </div>
+                        <div class="cores-grid">
+                            <div v-for="core in cpu.coreStats" :key="core.id" class="core-bar">
+                                <div class="core-label">{{ core.id }}</div>
+                                <div class="bar-container">
+                                    <div class="bar-fill" :style="{ width: core.usagePercent + '%', backgroundColor: getUsageColor(core.usagePercent) }"></div>
+                                </div>
+                                <div class="core-value">{{ core.usagePercent?.toFixed(0) }}%</div>
+                            </div>
+                        </div>
+                        <!-- Physical core temperatures -->
+                        <div class="temps-row" v-if="cpu.coreTemps?.length > 0">
+                            <span class="temps-label">Temps:</span>
+                            <span class="temp-pkg" v-if="cpu.packageTemp" :style="{ color: getUsageColor(cpu.packageTemp) }">Pkg:{{ cpu.packageTemp?.toFixed(0) }}°</span>
+                            <span v-for="core in cpu.coreTemps" :key="core.id" class="temp-core" :class="core.type" :style="{ color: getUsageColor(core.temperature) }">{{ core.temperature?.toFixed(0) }}°</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel memory-panel">
+                    <div class="panel-header">
+                        <h2>Memory</h2>
+                        <div class="alert-bells">
+                            <div class="alert-bell-wrapper">
+                                <button class="alert-bell" :class="getAlertState('ram')" @click.stop="togglePopover('ram')" title="RAM usage alert">
+                                    <span class="bell-icon">🔔</span>
+                                    <span class="bell-label">RAM</span>
+                                </button>
+                                <div class="alert-popover" v-if="activePopover === 'ram'" @click.stop>
+                                    <div class="popover-header">RAM Alert</div>
+                                    <label class="popover-toggle">
+                                        <input type="checkbox" :checked="alerts.ram.enabled" @change="toggleAlert('ram')">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <div class="popover-threshold">
+                                        <span>Threshold:</span>
+                                        <input type="number" :value="alerts.ram.threshold" @change="updateAlertThreshold('ram', $event.target.value)" min="0" max="100">
+                                        <span>%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="alert-bell-wrapper">
+                                <button class="alert-bell" :class="getAlertState('swap')" @click.stop="togglePopover('swap')" title="Swap usage alert">
+                                    <span class="bell-icon">🔔</span>
+                                    <span class="bell-label">Swap</span>
+                                </button>
+                                <div class="alert-popover" v-if="activePopover === 'swap'" @click.stop>
+                                    <div class="popover-header">Swap Alert</div>
+                                    <label class="popover-toggle">
+                                        <input type="checkbox" :checked="alerts.swap.enabled" @change="toggleAlert('swap')">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <div class="popover-threshold">
+                                        <span>Threshold:</span>
+                                        <input type="number" :value="alerts.swap.threshold" @change="updateAlertThreshold('swap', $event.target.value)" min="0" max="100">
+                                        <span>%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="paused.memory = !paused.memory" class="pause-btn" :class="{ active: paused.memory }">
+                            {{ paused.memory ? '▶' : '⏸' }}
+                        </button>
+                    </div>
+                    <div class="panel-content">
+                        <div class="memory-main">
+                            <div class="memory-bar">
+                                <span class="label">RAM</span>
+                                <div class="bar-container large">
+                                    <div class="bar-fill" :style="{ width: memory.usedPercent + '%', backgroundColor: getUsageColor(memory.usedPercent) }"></div>
+                                </div>
+                                <span class="value">{{ formatBytes(memory.used) }} / {{ formatBytes(memory.total) }}</span>
+                            </div>
+                            <div class="memory-bar" v-if="memory.swapTotal > 0">
+                                <span class="label">Swap</span>
+                                <div class="bar-container large">
+                                    <div class="bar-fill" :style="{ width: memory.swapPercent + '%', backgroundColor: getUsageColor(memory.swapPercent) }"></div>
+                                </div>
+                                <span class="value">{{ formatBytes(memory.swapUsed) }} / {{ formatBytes(memory.swapTotal) }}</span>
+                            </div>
+                        </div>
+                        <div class="memory-details">
+                            <div class="detail"><span>Available:</span> {{ formatBytes(memory.available) }}</div>
+                            <div class="detail"><span>Cached:</span> {{ formatBytes(memory.cached) }}</div>
+                            <div class="detail"><span>Buffers:</span> {{ formatBytes(memory.buffers) }}</div>
+                            <div class="detail"><span>Free:</span> {{ formatBytes(memory.free) }}</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel gpu-panel" v-if="gpu.available">
+                    <div class="panel-header">
+                        <h2>GPU</h2>
+                        <div class="alert-bells">
+                            <div class="alert-bell-wrapper">
+                                <button class="alert-bell" :class="getAlertState('gpuUsage')" @click.stop="togglePopover('gpuUsage')" title="GPU usage alert">
+                                    <span class="bell-icon">🔔</span>
+                                    <span class="bell-label">Use</span>
+                                </button>
+                                <div class="alert-popover" v-if="activePopover === 'gpuUsage'" @click.stop>
+                                    <div class="popover-header">GPU Usage Alert</div>
+                                    <label class="popover-toggle">
+                                        <input type="checkbox" :checked="alerts.gpuUsage.enabled" @change="toggleAlert('gpuUsage')">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <div class="popover-threshold">
+                                        <span>Threshold:</span>
+                                        <input type="number" :value="alerts.gpuUsage.threshold" @change="updateAlertThreshold('gpuUsage', $event.target.value)" min="0" max="100">
+                                        <span>%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="alert-bell-wrapper">
+                                <button class="alert-bell" :class="getAlertState('gpuTemp')" @click.stop="togglePopover('gpuTemp')" title="GPU temperature alert">
+                                    <span class="bell-icon">🔔</span>
+                                    <span class="bell-label">Tmp</span>
+                                </button>
+                                <div class="alert-popover" v-if="activePopover === 'gpuTemp'" @click.stop>
+                                    <div class="popover-header">GPU Temp Alert</div>
+                                    <label class="popover-toggle">
+                                        <input type="checkbox" :checked="alerts.gpuTemp.enabled" @change="toggleAlert('gpuTemp')">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <div class="popover-threshold">
+                                        <span>Threshold:</span>
+                                        <input type="number" :value="alerts.gpuTemp.threshold" @change="updateAlertThreshold('gpuTemp', $event.target.value)" min="0" max="100">
+                                        <span>°C</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="alert-bell-wrapper">
+                                <button class="alert-bell" :class="getAlertState('gpuVram')" @click.stop="togglePopover('gpuVram')" title="GPU VRAM alert">
+                                    <span class="bell-icon">🔔</span>
+                                    <span class="bell-label">Mem</span>
+                                </button>
+                                <div class="alert-popover" v-if="activePopover === 'gpuVram'" @click.stop>
+                                    <div class="popover-header">GPU VRAM Alert</div>
+                                    <label class="popover-toggle">
+                                        <input type="checkbox" :checked="alerts.gpuVram.enabled" @change="toggleAlert('gpuVram')">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <div class="popover-threshold">
+                                        <span>Threshold:</span>
+                                        <input type="number" :value="alerts.gpuVram.threshold" @change="updateAlertThreshold('gpuVram', $event.target.value)" min="0" max="100">
+                                        <span>%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="paused.gpu = !paused.gpu" class="pause-btn" :class="{ active: paused.gpu }">
+                            {{ paused.gpu ? '▶' : '⏸' }}
+                        </button>
+                    </div>
+                    <div class="panel-content">
+                        <div class="gpu-name">{{ gpu.name }}</div>
+                        <div class="gpu-bar">
+                            <span class="label">Usage</span>
+                            <div class="bar-container large">
+                                <div class="bar-fill" :style="{ width: gpu.usagePercent + '%', backgroundColor: getUsageColor(gpu.usagePercent) }"></div>
+                            </div>
+                            <span class="value">{{ gpu.usagePercent?.toFixed(0) }}%</span>
+                        </div>
+                        <div class="gpu-bar" v-if="gpu.memoryTotal > 0">
+                            <span class="label">VRAM</span>
+                            <div class="bar-container large">
+                                <div class="bar-fill" :style="{ width: (gpu.memoryUsed / gpu.memoryTotal * 100) + '%' }"></div>
+                            </div>
+                            <span class="value">{{ formatBytes(gpu.memoryUsed) }} / {{ formatBytes(gpu.memoryTotal) }}</span>
+                        </div>
+                        <div class="gpu-details">
+                            <div class="detail" v-if="gpu.temperature"><span>Temp:</span> {{ gpu.temperature }}°C</div>
+                            <div class="detail" v-if="gpu.powerDraw"><span>Power:</span> {{ gpu.powerDraw?.toFixed(0) }}W</div>
+                            <div class="detail" v-if="gpu.fanSpeed"><span>Fan:</span> {{ gpu.fanSpeed }}%</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel disk-panel">
+                    <div class="panel-header">
+                        <h2>Disks</h2>
+                        <div class="alert-bells">
+                            <div class="alert-bell-wrapper">
+                                <button class="alert-bell" :class="getAlertState('disk')" @click.stop="togglePopover('disk')" title="Disk usage alert">
+                                    <span class="bell-icon">🔔</span>
+                                    <span class="bell-label">Disk</span>
+                                </button>
+                                <div class="alert-popover" v-if="activePopover === 'disk'" @click.stop>
+                                    <div class="popover-header">Disk Alert</div>
+                                    <label class="popover-toggle">
+                                        <input type="checkbox" :checked="alerts.disk.enabled" @change="toggleAlert('disk')">
+                                        <span>Enabled</span>
+                                    </label>
+                                    <div class="popover-threshold">
+                                        <span>Threshold:</span>
+                                        <input type="number" :value="alerts.disk.threshold" @change="updateAlertThreshold('disk', $event.target.value)" min="0" max="100">
+                                        <span>%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="paused.disk = !paused.disk" class="pause-btn" :class="{ active: paused.disk }">
+                            {{ paused.disk ? '▶' : '⏸' }}
+                        </button>
+                    </div>
+                    <div class="panel-content">
+                        <div class="disk-list">
+                            <div v-for="part in disk.partitions" :key="part.mountPoint" class="disk-item">
+                                <div class="disk-info">
+                                    <span class="disk-mount">{{ part.mountPoint }}</span>
+                                    <span class="disk-device">{{ part.device }}</span>
+                                </div>
+                                <div class="bar-container">
+                                    <div class="bar-fill" :style="{ width: part.usedPercent + '%', backgroundColor: getUsageColor(part.usedPercent) }"></div>
+                                </div>
+                                <div class="disk-usage">
+                                    {{ formatBytes(part.used) }} / {{ formatBytes(part.total) }} ({{ part.usedPercent?.toFixed(0) }}%)
+                                </div>
+                            </div>
+                        </div>
+                        <div class="disk-io" v-if="disk.io?.length > 0">
+                            <h3>I/O</h3>
+                            <div v-for="io in disk.io" :key="io.device" class="io-item">
+                                <span class="io-device">{{ io.device }}</span>
+                                <span class="io-read">↓ {{ formatBytesSpeed(io.readSpeed) }}</span>
+                                <span class="io-write">↑ {{ formatBytesSpeed(io.writeSpeed) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Main content: Processes (left) + Network (right) -->
+            <div class="row main-row">
+                <section class="panel processes-panel">
+                    <div class="panel-header">
+                        <h2>Processes ({{ processes.totalCount || 0 }})</h2>
+                        <div class="process-controls">
+                            <input type="text" v-model="processFilter" placeholder="Filter..." class="filter-input">
+                            <button @click="paused.processes = !paused.processes" class="pause-btn" :class="{ active: paused.processes }">
+                                {{ paused.processes ? '▶' : '⏸' }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-content">
+                        <table class="process-table">
+                            <thead>
+                                <tr>
+                                    <th @click="sortBy('pid')" :class="{ sorted: sortKey === 'pid' }">PID</th>
+                                    <th @click="sortBy('name')" :class="{ sorted: sortKey === 'name' }">Name</th>
+                                    <th @click="sortBy('user')" :class="{ sorted: sortKey === 'user' }">User</th>
+                                    <th @click="sortBy('cpuPercent')" :class="{ sorted: sortKey === 'cpuPercent' }">CPU%</th>
+                                    <th @click="sortBy('memoryPercent')" :class="{ sorted: sortKey === 'memoryPercent' }">Mem%</th>
+                                    <th @click="sortBy('memoryBytes')" :class="{ sorted: sortKey === 'memoryBytes' }">Memory</th>
+                                    <th @click="sortBy('threads')" :class="{ sorted: sortKey === 'threads' }">Thr</th>
+                                    <th>Command</th>
+                                    <th v-if="authenticated">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="proc in filteredProcesses" :key="proc.pid" @click="showProcessDetail(proc.pid)" class="clickable">
+                                    <td>{{ proc.pid }}</td>
+                                    <td>{{ proc.name }}</td>
+                                    <td><span class="user-link" @click.stop="showUserInfo(proc.user)">{{ proc.user }}</span></td>
+                                    <td :class="getCpuClass(proc.cpuPercent)">{{ proc.cpuPercent?.toFixed(1) }}</td>
+                                    <td :class="getMemClass(proc.memoryPercent)">{{ proc.memoryPercent?.toFixed(1) }}</td>
+                                    <td>{{ formatBytes(proc.memoryBytes) }}</td>
+                                    <td>{{ proc.threads }}</td>
+                                    <td class="command">{{ proc.command }}</td>
+                                    <td v-if="authenticated" @click.stop>
+                                        <button v-if="!isServiceProcess(proc.pid)" class="action-btn kill" @click="quickKillProcess(proc.pid, proc.name)">Kill</button>
+                                        <span v-else class="service-badge">Service</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel network-panel">
+                    <div class="panel-header">
+                        <h2>Network</h2>
+                        <button @click="paused.network = !paused.network" class="pause-btn" :class="{ active: paused.network }">
+                            {{ paused.network ? '▶' : '⏸' }}
+                        </button>
+                    </div>
+                    <div class="panel-content">
+                        <div class="net-total">
+                            <div class="net-speed">
+                                <span class="down">↓ {{ formatBytesSpeed(network.totalRxSpeed) }}</span>
+                                <span class="up">↑ {{ formatBytesSpeed(network.totalTxSpeed) }}</span>
+                            </div>
+                            <div class="net-total-bytes">
+                                Total: ↓{{ formatBytes(network.totalRxBytes) }} ↑{{ formatBytes(network.totalTxBytes) }}
+                            </div>
+                        </div>
+                        <div class="interfaces">
+                            <div v-for="iface in network.interfaces" :key="iface.name" class="iface-item" :class="{ down: !iface.isUp }">
+                                <div class="iface-header">
+                                    <span class="iface-name">{{ iface.name }}</span>
+                                    <span class="iface-status">{{ iface.isUp ? '●' : '○' }}</span>
+                                </div>
+                                <div class="iface-ips">
+                                    <span v-for="ip in iface.ipAddresses" :key="ip" class="ip">{{ ip }}</span>
+                                </div>
+                                <div class="iface-speed" v-if="iface.isUp">
+                                    ↓{{ formatBytesSpeed(iface.rxSpeed) }} ↑{{ formatBytesSpeed(iface.txSpeed) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Bottom row: Sockets, Firewall -->
+            <div class="row bottom-row">
+                <section class="panel sockets-panel">
+                    <div class="panel-header">
+                        <h2>Sockets ({{ sockets.total || 0 }})</h2>
+                        <div class="socket-stats">
+                            <span class="listen">Listen: {{ sockets.listen || 0 }}</span>
+                            <span class="established">Established: {{ sockets.established || 0 }}</span>
+                        </div>
+                        <button @click="paused.sockets = !paused.sockets" class="pause-btn" :class="{ active: paused.sockets }">
+                            {{ paused.sockets ? '▶' : '⏸' }}
+                        </button>
+                    </div>
+                    <div class="panel-content">
+                        <div class="socket-tabs">
+                            <button @click="socketTab = 'tcp'" :class="{ active: socketTab === 'tcp' }">TCP ({{ sockets.tcp?.length || 0 }})</button>
+                            <button @click="socketTab = 'udp'" :class="{ active: socketTab === 'udp' }">UDP ({{ sockets.udp?.length || 0 }})</button>
+                        </div>
+                        <table class="socket-table">
+                            <thead>
+                                <tr>
+                                    <th>Proto</th>
+                                    <th>Local</th>
+                                    <th>Remote</th>
+                                    <th>State</th>
+                                    <th>Process</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(sock, i) in currentSockets" :key="i">
+                                    <td>{{ sock.protocol }}</td>
+                                    <td><span class="ip-link" v-if="sock.localAddr !== '0.0.0.0' && sock.localAddr !== '::'" @click.stop="showIPInfo(sock.localAddr)">{{ sock.localAddr }}</span><span v-else>{{ sock.localAddr }}</span>:{{ sock.localPort }}</td>
+                                    <td><span class="ip-link" v-if="sock.remoteAddr && sock.remoteAddr !== '*' && sock.remoteAddr !== '0.0.0.0' && sock.remoteAddr !== '::'" @click.stop="showIPInfo(sock.remoteAddr)">{{ sock.remoteAddr }}</span><span v-else>{{ sock.remoteAddr }}</span>:{{ sock.remotePort }}</td>
+                                    <td :class="'state-' + sock.state?.toLowerCase()">{{ sock.state }}</td>
+                                    <td>{{ sock.processName }}<template v-if="sock.pid > 0"> (<span class="pid-link" @click.stop="showProcessDetail(sock.pid)">{{ sock.pid }}</span>)</template></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel firewall-panel">
+                    <div class="panel-header">
+                        <h2>Firewall</h2>
+                        <span class="fw-backend" v-if="firewall.available">{{ firewall.backend }}</span>
+                        <span class="fw-status" :class="{ active: firewall.active }">
+                            {{ firewall.active ? 'Active' : 'Inactive' }}
+                        </span>
+                        <button @click="paused.firewall = !paused.firewall" class="pause-btn" :class="{ active: paused.firewall }">
+                            {{ paused.firewall ? '▶' : '⏸' }}
+                        </button>
+                    </div>
+                    <div class="panel-content">
+                        <div v-if="!firewall.available" class="no-firewall">
+                            No firewall detected
+                        </div>
+                        <table v-else class="firewall-table">
+                            <thead>
+                                <tr>
+                                    <th>Chain</th>
+                                    <th>Proto</th>
+                                    <th>Port</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(rule, i) in firewall.rules" :key="i">
+                                    <td>{{ rule.chain }}</td>
+                                    <td>{{ rule.protocol }}</td>
+                                    <td>{{ rule.port || '-' }}</td>
+                                    <td :class="'action-' + rule.action?.toLowerCase()">{{ rule.action }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- Process Detail Modal -->
+        <div v-if="selectedProcess" class="modal-overlay" @click.self="selectedProcess = null">
+            <div class="modal process-detail-modal">
+                <div class="modal-header">
+                    <h2>Process {{ selectedProcess.pid }}: {{ selectedProcess.name }}</h2>
+                    <button @click="selectedProcess = null" class="close-btn">×</button>
+                </div>
+                <div class="modal-content">
+                    <div class="detail-grid">
+                        <!-- Command Line - full width, at top -->
+                        <div class="detail-section full-width">
+                            <h3>Command Line</h3>
+                            <code class="command-line">{{ selectedProcess.commandLine?.join(' ') }}</code>
+                        </div>
+                        <!-- Paths - full width -->
+                        <div class="detail-section full-width">
+                            <h3>Paths</h3>
+                            <div class="detail-row"><span>Executable:</span> <code>{{ selectedProcess.exe }}</code></div>
+                            <div class="detail-row"><span>CWD:</span> <code>{{ selectedProcess.cwd }}</code></div>
+                        </div>
+                        <!-- Basic Info and Resource Usage - side by side -->
+                        <div class="detail-section">
+                            <h3>Basic Info</h3>
+                            <div class="detail-row"><span>PID:</span> {{ selectedProcess.pid }}</div>
+                            <div class="detail-row"><span>PPID:</span> <span class="pid-link" @click="showProcessDetail(selectedProcess.ppid)" v-if="selectedProcess.ppid > 0 && selectedProcess.ppid !== selectedProcess.pid">{{ selectedProcess.ppid }}</span><span v-else>{{ selectedProcess.ppid }}</span></div>
+                            <div class="detail-row"><span>User:</span> <span class="user-link" @click="showUserInfo(selectedProcess.user)">{{ selectedProcess.user }}</span> (UID: <span class="user-link" @click="showUserInfo(String(selectedProcess.uid))">{{ selectedProcess.uid }}</span>)</div>
+                            <div class="detail-row"><span>State:</span> {{ selectedProcess.state }}</div>
+                            <div class="detail-row"><span>Nice:</span> {{ selectedProcess.nice }}</div>
+                            <div class="detail-row"><span>Threads:</span> {{ selectedProcess.threads }}</div>
+                            <div class="detail-row"><span>Uptime:</span> {{ selectedProcess.uptime }}</div>
+                        </div>
+                        <div class="detail-section">
+                            <h3>Resource Usage</h3>
+                            <div class="detail-row"><span>CPU:</span> {{ selectedProcess.cpuPercent?.toFixed(2) }}%</div>
+                            <div class="detail-row"><span>Memory:</span> {{ formatBytes(selectedProcess.memoryBytes) }} ({{ selectedProcess.memoryPercent?.toFixed(2) }}%)</div>
+                            <div class="detail-row"><span>Virtual:</span> {{ formatBytes(selectedProcess.vmSize) }}</div>
+                            <div class="detail-row"><span>RSS:</span> {{ formatBytes(selectedProcess.vmRss) }}</div>
+                            <div class="detail-row"><span>Swap:</span> {{ formatBytes(selectedProcess.vmSwap) }}</div>
+                            <div class="detail-row"><span>I/O Read:</span> {{ formatBytes(selectedProcess.ioReadBytes) }}</div>
+                            <div class="detail-row"><span>I/O Write:</span> {{ formatBytes(selectedProcess.ioWriteBytes) }}</div>
+                        </div>
+                        <!-- Network Connections and File Descriptors - side by side -->
+                        <div class="detail-section" v-if="selectedProcess.connections?.length > 0">
+                            <h3>Network Connections ({{ selectedProcess.connections.length }})</h3>
+                            <table class="mini-table">
+                                <tr v-for="(conn, i) in selectedProcess.connections" :key="i">
+                                    <td>{{ conn.protocol }}</td>
+                                    <td><span class="ip-link" v-if="conn.localAddr !== '0.0.0.0' && conn.localAddr !== '::'" @click.stop="showIPInfo(conn.localAddr)">{{ conn.localAddr }}</span><span v-else>{{ conn.localAddr }}</span>:{{ conn.localPort }}</td>
+                                    <td>→</td>
+                                    <td><span class="ip-link" v-if="conn.remoteAddr && conn.remoteAddr !== '*' && conn.remoteAddr !== '0.0.0.0' && conn.remoteAddr !== '::'" @click.stop="showIPInfo(conn.remoteAddr)">{{ conn.remoteAddr }}</span><span v-else>{{ conn.remoteAddr }}</span>:{{ conn.remotePort }}</td>
+                                    <td>{{ conn.state }}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="detail-section" v-if="selectedProcess.fds?.length > 0">
+                            <h3>File Descriptors ({{ selectedProcess.fds.length }})</h3>
+                            <div class="fd-list">
+                                <div v-for="fd in selectedProcess.fds.slice(0, 50)" :key="fd.fd" class="fd-item">
+                                    <span class="fd-num">{{ fd.fd }}</span>
+                                    <span class="fd-type">{{ fd.type }}</span>
+                                    <span class="fd-target">{{ fd.target }}</span>
+                                </div>
+                                <div v-if="selectedProcess.fds.length > 50" class="more">
+                                    ... and {{ selectedProcess.fds.length - 50 }} more
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Children -->
+                        <div class="detail-section" v-if="selectedProcess.children?.length > 0">
+                            <h3>Children ({{ selectedProcess.children.length }})</h3>
+                            <div class="children-list">
+                                <template v-for="child in selectedProcess.children" :key="child"><span v-if="child > 0" class="child-pid" @click="showProcessDetail(child)">{{ child }}</span></template>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-actions" v-if="authenticated">
+                        <button @click="killProcess(selectedProcess.pid, 15)" class="btn-warning">Send SIGTERM</button>
+                        <button @click="killProcess(selectedProcess.pid, 9)" class="btn-danger">Send SIGKILL</button>
+                        <div class="renice-control">
+                            <label>Priority:</label>
+                            <input type="number" v-model="newPriority" min="-20" max="19">
+                            <button @click="reniceProcess(selectedProcess.pid)" class="btn-primary">Set</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Login Modal -->
+        <div v-if="showLogin" class="modal-overlay" @click.self="showLogin = false">
+            <div class="modal login-modal">
+                <div class="modal-header">
+                    <h2>Login</h2>
+                    <button @click="showLogin = false" class="close-btn">×</button>
+                </div>
+                <div class="modal-content">
+                    <form @submit.prevent="login">
+                        <div class="form-group">
+                            <label>Username</label>
+                            <input type="text" v-model="loginForm.username" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" v-model="loginForm.password" required>
+                        </div>
+                        <div class="form-error" v-if="loginError">{{ loginError }}</div>
+                        <button type="submit" class="btn-primary">Login</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- IP Info Modal -->
+        <div v-if="selectedIP" class="modal-overlay" @click.self="selectedIP = null">
+            <div class="modal ip-info-modal">
+                <div class="modal-header">
+                    <h2>IP: {{ selectedIP.ip }}</h2>
+                    <button @click="selectedIP = null" class="close-btn">×</button>
+                </div>
+                <div class="modal-content">
+                    <div v-if="ipLoading" class="loading">Loading IP information...</div>
+                    <div v-else class="detail-grid">
+                        <div class="detail-section">
+                            <h3>Basic Info</h3>
+                            <div class="detail-row"><span>IP:</span> {{ selectedIP.ip }}</div>
+                            <div class="detail-row"><span>Version:</span> {{ selectedIP.version }}</div>
+                            <div class="detail-row"><span>Type:</span>
+                                <span v-if="selectedIP.isLoopback">Loopback</span>
+                                <span v-else-if="selectedIP.isPrivate">Private</span>
+                                <span v-else>Public</span>
+                            </div>
+                            <div class="detail-row" v-if="selectedIP.hostname"><span>Hostname:</span> {{ selectedIP.hostname }}</div>
+                            <div class="detail-row" v-if="selectedIP.reverseDns?.length > 0">
+                                <span>Reverse DNS:</span>
+                                <div class="dns-list">
+                                    <div v-for="dns in selectedIP.reverseDns" :key="dns">{{ dns }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section" v-if="selectedIP.geoip">
+                            <h3>Geolocation</h3>
+                            <div class="detail-row" v-if="selectedIP.geoip.country"><span>Country:</span> {{ selectedIP.geoip.country }} ({{ selectedIP.geoip.countryCode }})</div>
+                            <div class="detail-row" v-if="selectedIP.geoip.region"><span>Region:</span> {{ selectedIP.geoip.region }}</div>
+                            <div class="detail-row" v-if="selectedIP.geoip.city"><span>City:</span> {{ selectedIP.geoip.city }}</div>
+                            <div class="detail-row" v-if="selectedIP.geoip.org"><span>Organization:</span> {{ selectedIP.geoip.org }}</div>
+                            <div class="detail-row" v-if="selectedIP.geoip.asn"><span>ASN:</span> {{ selectedIP.geoip.asn }}</div>
+                            <div class="detail-row" v-if="selectedIP.geoip.latitude">
+                                <span>Coordinates:</span> {{ selectedIP.geoip.latitude?.toFixed(4) }}, {{ selectedIP.geoip.longitude?.toFixed(4) }}
+                            </div>
+                        </div>
+                        <div class="detail-section" v-if="selectedIP.relatedProcs?.length > 0">
+                            <h3>Related Processes</h3>
+                            <div class="pid-list">
+                                <template v-for="pid in selectedIP.relatedProcs" :key="pid"><span v-if="pid > 0" class="pid-link" @click="showProcessDetail(pid)">{{ pid }}</span></template>
+                            </div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedIP.whois">
+                            <h3>Whois</h3>
+                            <pre class="whois-content">{{ selectedIP.whois }}</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Info Modal -->
+        <div v-if="selectedUser" class="modal-overlay" @click.self="selectedUser = null">
+            <div class="modal user-info-modal">
+                <div class="modal-header">
+                    <h2>User: {{ selectedUser.username }}</h2>
+                    <button @click="selectedUser = null" class="close-btn">×</button>
+                </div>
+                <div class="modal-content">
+                    <div v-if="userLoading" class="loading">Loading user information...</div>
+                    <div v-else class="detail-grid">
+                        <div class="detail-section">
+                            <h3>Account Info</h3>
+                            <div class="detail-row"><span>Username:</span> {{ selectedUser.username }}</div>
+                            <div class="detail-row"><span>UID:</span> {{ selectedUser.uid }}</div>
+                            <div class="detail-row"><span>GID:</span> {{ selectedUser.gid }}</div>
+                            <div class="detail-row" v-if="selectedUser.gecos"><span>Full Name:</span> {{ selectedUser.gecos }}</div>
+                            <div class="detail-row" v-if="!authenticated"><span>Home:</span> <code>{{ selectedUser.homeDir }}</code></div>
+                            <div class="detail-row" v-if="!authenticated"><span>Shell:</span> <code>{{ selectedUser.shell }}</code></div>
+                            <!-- Editable fields when authenticated -->
+                            <div class="detail-row editable-field" v-if="authenticated">
+                                <span>Home:</span>
+                                <input type="text" :value="selectedUser.homeDir" @keyup.enter="modifyUser(selectedUser.username, 'home', $event.target.value)" placeholder="Home directory">
+                                <button @click="modifyUser(selectedUser.username, 'home', $event.target.previousElementSibling.value)">Save</button>
+                            </div>
+                            <div class="detail-row editable-field" v-if="authenticated">
+                                <span>Shell:</span>
+                                <input type="text" :value="selectedUser.shell" @keyup.enter="modifyUser(selectedUser.username, 'shell', $event.target.value)" placeholder="Shell">
+                                <button @click="modifyUser(selectedUser.username, 'shell', $event.target.previousElementSibling.value)">Save</button>
+                            </div>
+                        </div>
+                        <div class="detail-section">
+                            <h3>Session Info</h3>
+                            <div class="detail-row"><span>Last Login:</span> {{ selectedUser.lastLogin }}</div>
+                            <div class="detail-row"><span>Current Sessions:</span> {{ selectedUser.currentSessions }}</div>
+                            <div class="detail-row"><span>Running Processes:</span> {{ selectedUser.processCount }}</div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedUser.groups?.length > 0">
+                            <h3>Groups ({{ selectedUser.groups.length }})</h3>
+                            <div class="groups-list">
+                                <span v-for="group in selectedUser.groups" :key="group" class="group-tag group-link" @click="showGroupInfo(group)">{{ group }}</span>
+                            </div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedUser.runningProcs?.length > 0">
+                            <h3>Processes (showing {{ selectedUser.runningProcs.length }} of {{ selectedUser.processCount }})</h3>
+                            <div class="proc-list">
+                                <div v-for="proc in selectedUser.runningProcs" :key="proc.pid" class="proc-info">
+                                    <span class="proc-name">{{ proc.name }}</span>
+                                    <span v-if="proc.pid > 0" class="pid-link proc-pid" @click="showProcessDetail(proc.pid)">({{ proc.pid }})</span>
+                                    <button v-if="authenticated && !isServiceProcess(proc.pid)" class="action-btn kill" @click="quickKillProcess(proc.pid, proc.name)">Kill</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Group Info Modal -->
+        <div v-if="selectedGroup" class="modal-overlay" @click.self="selectedGroup = null">
+            <div class="modal user-info-modal">
+                <div class="modal-header">
+                    <h2>Group: {{ selectedGroup.name }}</h2>
+                    <button @click="selectedGroup = null" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-content">
+                    <div v-if="groupLoading" class="loading">Loading group information...</div>
+                    <div v-else-if="selectedGroup.error" class="error">{{ selectedGroup.error }}</div>
+                    <div v-else>
+                        <div class="detail-section">
+                            <h3>Group Info</h3>
+                            <div class="detail-row"><span>Name:</span> {{ selectedGroup.name }}</div>
+                            <div class="detail-row"><span>GID:</span> {{ selectedGroup.gid }}</div>
+                            <div class="detail-row"><span>Members:</span> {{ selectedGroup.members?.length || 0 }}</div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedGroup.members?.length > 0">
+                            <h3>Members</h3>
+                            <div class="groups-list">
+                                <div v-for="member in selectedGroup.members" :key="member" class="group-member">
+                                    <span class="user-link" @click="showUserInfo(member)">{{ member }}</span>
+                                    <button v-if="authenticated" class="action-btn kill" @click="removeUserFromGroup(selectedGroup.name, member)">Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="no-data">No members in this group</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
