@@ -82,13 +82,24 @@ func (a *API) SetupRoutes(mux *http.ServeMux, authMgr *auth.AuthManager) {
 	mux.HandleFunc("/api/docker/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Check if it's an action (start, stop, restart, kill)
+		// Check if it's an action (start, stop, restart, kill, pause, unpause)
 		if strings.HasSuffix(path, "/start") ||
 			strings.HasSuffix(path, "/stop") ||
 			strings.HasSuffix(path, "/restart") ||
-			strings.HasSuffix(path, "/kill") {
+			strings.HasSuffix(path, "/kill") ||
+			strings.HasSuffix(path, "/pause") ||
+			strings.HasSuffix(path, "/unpause") {
 			// Requires read-write access
 			authMgr.MiddlewareReadWrite(a.HandleDockerAction)(w, r)
+		} else if strings.HasSuffix(path, "/logs") {
+			// Logs - read-only
+			authMgr.Middleware(a.HandleDockerLogs, false)(w, r)
+		} else if strings.HasSuffix(path, "/top") {
+			// Top - read-only
+			authMgr.Middleware(a.HandleDockerTop, false)(w, r)
+		} else if strings.HasSuffix(path, "/inspect") {
+			// Inspect - read-only
+			authMgr.Middleware(a.HandleDockerInspect, false)(w, r)
 		} else {
 			// Container detail - read-only
 			authMgr.Middleware(a.HandleDockerContainer, false)(w, r)
