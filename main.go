@@ -27,7 +27,10 @@ import (
 	"syspeek/config"
 )
 
-const maxPortRetries = 50
+const (
+	maxPortRetries = 50
+	Version        = "1.1.0"
+)
 
 //go:embed static templates
 var embeddedFS embed.FS
@@ -46,7 +49,21 @@ func main() {
 	flag.Bool("p", false, "Alias for --public")
 	admin := flag.Bool("admin", false, "Allow full admin access without authentication")
 	flag.Bool("a", false, "Alias for --admin")
+	version := flag.Bool("version", false, "Print version and exit")
+	flag.Bool("v", false, "Alias for --version")
 	flag.Parse()
+
+	// Handle version flag
+	showVersion := *version
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "v" {
+			showVersion = true
+		}
+	})
+	if showVersion {
+		fmt.Printf("syspeek version %s\n", Version)
+		os.Exit(0)
+	}
 
 	// Handle aliases
 	flag.Visit(func(f *flag.Flag) {
