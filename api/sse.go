@@ -41,6 +41,7 @@ func (a *API) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	procTicker := time.NewTicker(time.Duration(a.config.Refresh.Processes) * time.Millisecond)
 	sockTicker := time.NewTicker(time.Duration(a.config.Refresh.Sockets) * time.Millisecond)
 	fwTicker := time.NewTicker(time.Duration(a.config.Refresh.Firewall) * time.Millisecond)
+	dockerTicker := time.NewTicker(10 * time.Second) // Docker refreshes every 10 seconds
 
 	defer func() {
 		cpuTicker.Stop()
@@ -51,6 +52,7 @@ func (a *API) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		procTicker.Stop()
 		sockTicker.Stop()
 		fwTicker.Stop()
+		dockerTicker.Stop()
 	}()
 
 	// Send initial data immediately
@@ -119,6 +121,12 @@ func (a *API) HandleSSE(w http.ResponseWriter, r *http.Request) {
 					return // Client disconnected
 				}
 			}
+
+		case <-dockerTicker.C:
+			data := collectors.GetDockerInfo()
+			if sendSSEEvent(w, flusher, "docker", data) != nil {
+				return // Client disconnected
+			}
 		}
 	}
 }
@@ -165,6 +173,11 @@ func sendInitialData(w http.ResponseWriter, flusher http.Flusher, cfg *config.Co
 		if sendSSEEvent(w, flusher, "firewall", data) != nil {
 			return false
 		}
+	}
+	// Send docker info
+	dockerData := collectors.GetDockerInfo()
+	if sendSSEEvent(w, flusher, "docker", dockerData) != nil {
+		return false
 	}
 	return true
 }

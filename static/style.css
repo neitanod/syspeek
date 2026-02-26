@@ -1999,3 +1999,226 @@ main.compact .alert-bell .bell-icon {
         display: none;
     }
 }
+
+/* Global Search */
+.global-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.global-search-input {
+    width: 300px;
+    padding: 10px 36px 10px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.global-search-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    background: rgba(255,255,255,0.12);
+    width: 350px;
+}
+
+.global-search-input::placeholder {
+    color: rgba(255,255,255,0.5);
+}
+
+[data-theme="light"] .global-search-input {
+    background: rgba(0,0,0,0.08);
+    border-color: rgba(0,0,0,0.15);
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .global-search-input::placeholder {
+    color: rgba(0,0,0,0.4);
+}
+
+.clear-search {
+    position: absolute;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+}
+
+.clear-search:hover {
+    color: var(--text-primary);
+}
+
+/* Docker Panel */
+.docker-panel {
+    grid-column: 1 / -1;
+}
+
+.docker-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.docker-table th,
+.docker-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.docker-table th {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.docker-table .image-name {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+.docker-table .ports {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.docker-table .status-running {
+    color: var(--success-color);
+}
+
+.docker-table .status-exited,
+.docker-table .status-stopped {
+    color: var(--danger-color);
+}
+
+.docker-table .status-paused {
+    color: var(--warning-color);
+}
+
+.docker-table .status-created,
+.docker-table .status-restarting {
+    color: var(--info-color);
+}
+
+/* Docker Detail Modal */
+.docker-detail-modal {
+    max-width: 900px;
+}
+
+.ports-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.port-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    font-family: monospace;
+    font-size: 12px;
+}
+
+.port-item .host-port {
+    color: var(--accent-color);
+}
+
+.port-item .arrow {
+    color: var(--text-muted);
+}
+
+.port-item .container-port {
+    color: var(--success-color);
+}
+
+.mount-type {
+    color: var(--info-color);
+    font-size: 10px;
+    text-transform: uppercase;
+    width: 60px;
+}
+
+.mount-source,
+.mount-dest {
+    font-size: 12px;
+}
+
+.mount-source code,
+.mount-dest code {
+    word-break: break-all;
+}
+
+.mount-arrow {
+    color: var(--text-muted);
+    text-align: center;
+    width: 30px;
+}
+
+.mount-mode {
+    color: var(--warning-color);
+    font-size: 10px;
+    text-transform: uppercase;
+    width: 40px;
+}
+
+.env-list {
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 11px;
+}
+
+.env-item {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.env-item code {
+    word-break: break-all;
+}
+
+.btn-success {
+    background: var(--success-color);
+    color: #fff;
+}
+
+.btn-success:hover {
+    background: #16a34a;
+}
+
+.action-btn.success {
+    background: var(--success-color);
+    color: #fff;
+}
+
+.action-btn.success:hover {
+    background: #16a34a;
+}
+
+.action-btn.warning {
+    background: var(--warning-color);
+    color: #000;
+}
+
+.action-btn.warning:hover {
+    background: #d97706;
+}

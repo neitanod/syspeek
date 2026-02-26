@@ -67,4 +67,21 @@ func (a *API) SetupRoutes(mux *http.ServeMux, authMgr *auth.AuthManager) {
 
 	// Service PID endpoint
 	mux.HandleFunc("/api/pid", a.HandleServicePID)
+
+	// Docker endpoints
+	mux.HandleFunc("/api/docker", a.HandleDocker)
+	mux.HandleFunc("/api/docker/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Check if it's an action (start, stop, restart, kill)
+		if strings.HasSuffix(path, "/start") ||
+			strings.HasSuffix(path, "/stop") ||
+			strings.HasSuffix(path, "/restart") ||
+			strings.HasSuffix(path, "/kill") {
+			authMgr.Middleware(a.HandleDockerAction, true)(w, r)
+		} else {
+			// Container detail
+			a.HandleDockerContainer(w, r)
+		}
+	})
 }
