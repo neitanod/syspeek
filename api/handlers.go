@@ -695,11 +695,11 @@ func (a *API) HandleDockerAction(w http.ResponseWriter, r *http.Request) {
 	action := parts[1]
 
 	// Validate action
-	validActions := map[string]bool{"start": true, "stop": true, "restart": true, "kill": true}
+	validActions := map[string]bool{"start": true, "stop": true, "restart": true, "kill": true, "pause": true, "unpause": true}
 	if !validActions[action] {
 		writeJSON(w, http.StatusBadRequest, ActionResponse{
 			Success: false,
-			Message: "Invalid action. Valid actions: start, stop, restart, kill",
+			Message: "Invalid action. Valid actions: start, stop, restart, kill, pause, unpause",
 		})
 		return
 	}
@@ -717,4 +717,96 @@ func (a *API) HandleDockerAction(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Message: "Container " + action + " successful",
 	})
+}
+
+func (a *API) HandleDockerLogs(w http.ResponseWriter, r *http.Request) {
+	// Extract container ID from path: /api/docker/{id}/logs
+	path := strings.TrimPrefix(r.URL.Path, "/api/docker/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[0] == "" {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Container ID required",
+		})
+		return
+	}
+
+	containerID := parts[0]
+
+	// Get tail parameter (default 50)
+	tail := 50
+	if t := r.URL.Query().Get("tail"); t != "" {
+		if parsed, err := strconv.Atoi(t); err == nil && parsed > 0 {
+			tail = parsed
+		}
+	}
+
+	logs, err := collectors.GetContainerLogs(containerID, tail)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ActionResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"logs": logs,
+		"tail": tail,
+	})
+}
+
+func (a *API) HandleDockerTop(w http.ResponseWriter, r *http.Request) {
+	// Extract container ID from path: /api/docker/{id}/top
+	path := strings.TrimPrefix(r.URL.Path, "/api/docker/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[0] == "" {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Container ID required",
+		})
+		return
+	}
+
+	containerID := parts[0]
+
+	processes, err := collectors.GetContainerTop(containerID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ActionResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"processes": processes,
+	})
+}
+
+func (a *API) HandleDockerInspect(w http.ResponseWriter, r *http.Request) {
+	// Extract container ID from path: /api/docker/{id}/inspect
+	path := strings.TrimPrefix(r.URL.Path, "/api/docker/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[0] == "" {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Container ID required",
+		})
+		return
+	}
+
+	containerID := parts[0]
+
+	inspect, err := collectors.GetContainerInspect(containerID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ActionResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Return wrapped JSON
+	writeJSON(w, http.StatusOK, map[string]string{"inspect": inspect})
 }

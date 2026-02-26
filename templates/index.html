@@ -581,12 +581,25 @@
             </div>
         </main>
 
+        <!-- Raw Inspect Modal -->
+        <div v-if="showInspectModal" class="modal-overlay inspect-overlay" @click.self="showInspectModal = false">
+            <div class="modal inspect-modal">
+                <div class="modal-header">
+                    <h2>Raw Inspect</h2>
+                    <button @click="showInspectModal = false" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-content">
+                    <pre class="inspect-content">{{ containerInspect }}</pre>
+                </div>
+            </div>
+        </div>
+
         <!-- Docker Container Detail Modal -->
-        <div v-if="selectedContainer" class="modal-overlay" @click.self="selectedContainer = null; showAllEnv = false">
+        <div v-if="selectedContainer" class="modal-overlay" @click.self="selectedContainer = null; showAllEnv = false; resetContainerExtended()">
             <div class="modal docker-detail-modal">
                 <div class="modal-header">
                     <h2>Container: {{ selectedContainer.name || selectedContainer.id?.substring(0, 12) }}</h2>
-                    <button @click="selectedContainer = null; showAllEnv = false" class="close-btn">×</button>
+                    <button @click="selectedContainer = null; showAllEnv = false; resetContainerExtended()" class="close-btn">×</button>
                 </div>
                 <div class="modal-content">
                     <div v-if="containerLoading" class="loading">Loading container information...</div>
@@ -668,11 +681,125 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- Health Check -->
+                        <div class="detail-section" v-if="selectedContainer.healthCheck">
+                            <h3>Health Check</h3>
+                            <div class="detail-row">
+                                <span>Status:</span>
+                                <span :class="'health-' + selectedContainer.healthCheck.status">{{ selectedContainer.healthCheck.status || 'none' }}</span>
+                            </div>
+                            <div class="detail-row" v-if="selectedContainer.healthCheck.failingStreak > 0">
+                                <span>Failing Streak:</span> {{ selectedContainer.healthCheck.failingStreak }}
+                            </div>
+                            <div class="detail-row" v-if="selectedContainer.healthCheck.log">
+                                <span>Last Check:</span> <code>{{ selectedContainer.healthCheck.log }}</code>
+                            </div>
+                        </div>
+                        <!-- Restart Policy -->
+                        <div class="detail-section" v-if="selectedContainer.restartPolicy">
+                            <h3>Restart Policy</h3>
+                            <div class="detail-row"><span>Policy:</span> {{ selectedContainer.restartPolicy.name || 'no' }}</div>
+                            <div class="detail-row" v-if="selectedContainer.restartPolicy.maximumRetryCount > 0">
+                                <span>Max Retries:</span> {{ selectedContainer.restartPolicy.maximumRetryCount }}
+                            </div>
+                        </div>
+                        <!-- Resource Limits -->
+                        <div class="detail-section" v-if="selectedContainer.resourceLimits && (selectedContainer.resourceLimits.memory > 0 || selectedContainer.resourceLimits.cpuQuota > 0)">
+                            <h3>Resource Limits</h3>
+                            <div class="detail-row" v-if="selectedContainer.resourceLimits.memory > 0">
+                                <span>Memory:</span> {{ formatBytes(selectedContainer.resourceLimits.memory) }}
+                            </div>
+                            <div class="detail-row" v-if="selectedContainer.resourceLimits.memorySwap > 0">
+                                <span>Memory + Swap:</span> {{ formatBytes(selectedContainer.resourceLimits.memorySwap) }}
+                            </div>
+                            <div class="detail-row" v-if="selectedContainer.resourceLimits.cpuShares > 0">
+                                <span>CPU Shares:</span> {{ selectedContainer.resourceLimits.cpuShares }}
+                            </div>
+                            <div class="detail-row" v-if="selectedContainer.resourceLimits.cpuQuota > 0">
+                                <span>CPU Quota:</span> {{ selectedContainer.resourceLimits.cpuQuota }}
+                            </div>
+                            <div class="detail-row" v-if="selectedContainer.resourceLimits.cpuPeriod > 0">
+                                <span>CPU Period:</span> {{ selectedContainer.resourceLimits.cpuPeriod }}
+                            </div>
+                            <div class="detail-row" v-if="selectedContainer.resourceLimits.pidsLimit > 0">
+                                <span>PIDs Limit:</span> {{ selectedContainer.resourceLimits.pidsLimit }}
+                            </div>
+                        </div>
+                        <!-- Networks -->
+                        <div class="detail-section full-width" v-if="selectedContainer.networks?.length > 0">
+                            <h3>Networks</h3>
+                            <table class="mini-table">
+                                <thead>
+                                    <tr><th>Network</th><th>IP Address</th><th>Gateway</th><th>MAC</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="net in selectedContainer.networks" :key="net.name">
+                                        <td>{{ net.name }}</td>
+                                        <td><code>{{ net.ipAddress || '-' }}</code></td>
+                                        <td><code>{{ net.gateway || '-' }}</code></td>
+                                        <td><code>{{ net.macAddress || '-' }}</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Docker Top (Processes) -->
+                        <div class="detail-section full-width" v-if="selectedContainer.state === 'running'">
+                            <h3>
+                                Processes
+                                <button class="refresh-btn" @click="fetchContainerTop(selectedContainer.id)" :disabled="containerTopLoading" title="Refresh">
+                                    {{ containerTopLoading ? '...' : '↻' }}
+                                </button>
+                            </h3>
+                            <div v-if="containerTop.length === 0 && !containerTopLoading" class="no-data">
+                                Click refresh to load processes
+                            </div>
+                            <table v-else-if="containerTop.length > 0" class="mini-table">
+                                <thead>
+                                    <tr><th>PID</th><th>User</th><th>CPU</th><th>Mem</th><th>Command</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="proc in containerTop" :key="proc.pid">
+                                        <td>{{ proc.pid }}</td>
+                                        <td>{{ proc.user }}</td>
+                                        <td>{{ proc.cpu }}</td>
+                                        <td>{{ proc.mem }}</td>
+                                        <td class="command">{{ proc.command }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Container Logs -->
+                        <div class="detail-section full-width">
+                            <h3>
+                                Logs
+                                <button class="refresh-btn" @click="fetchContainerLogs(selectedContainer.id)" :disabled="containerLogsLoading" title="Load logs">
+                                    {{ containerLogsLoading ? '...' : '↻' }}
+                                </button>
+                                <span v-if="containerLogs" class="logs-info">(last {{ containerLogsTail }} lines)</span>
+                            </h3>
+                            <div v-if="!containerLogs && !containerLogsLoading" class="no-data">
+                                Click refresh to load logs
+                            </div>
+                            <div v-else class="logs-container">
+                                <pre class="logs-content">{{ containerLogs }}</pre>
+                                <button v-if="containerLogs" @click="loadMoreLogs(selectedContainer.id)" class="btn-secondary load-more-btn" :disabled="containerLogsLoading">
+                                    Load More ({{ containerLogsTail * 2 }} lines)
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Raw Inspect Button -->
+                        <div class="detail-section full-width inspect-btn-row">
+                            <button @click="fetchContainerInspect(selectedContainer.id)" class="btn-secondary">
+                                Show Raw Inspect JSON
+                            </button>
+                        </div>
                     </div>
-                    <div class="modal-actions" v-if="readWrite && selectedContainer.id">
+                    <div class="modal-actions" v-if="readWrite && selectedContainer.id && !containerLoading && !selectedContainer.error">
                         <button v-if="selectedContainer.state === 'running'" @click="dockerAction(selectedContainer.id, 'stop')" class="btn-warning">Stop</button>
                         <button v-if="selectedContainer.state !== 'running'" @click="dockerAction(selectedContainer.id, 'start')" class="btn-success">Start</button>
                         <button @click="dockerAction(selectedContainer.id, 'restart')" class="btn-primary">Restart</button>
+                        <button v-if="selectedContainer.state === 'running' && selectedContainer.state !== 'paused'" @click="dockerAction(selectedContainer.id, 'pause')" class="btn-secondary">Pause</button>
+                        <button v-if="selectedContainer.state === 'paused'" @click="dockerAction(selectedContainer.id, 'unpause')" class="btn-info">Unpause</button>
                         <button v-if="selectedContainer.state === 'running'" @click="dockerAction(selectedContainer.id, 'kill')" class="btn-danger">Kill</button>
                     </div>
                 </div>

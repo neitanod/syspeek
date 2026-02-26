@@ -52,6 +52,8 @@ const app = createApp({
         };
 
         const processFilter = ref('');
+        const dockerFilter = ref('');
+        const socketFilter = ref('');
         const sortKey = ref('cpuPercent');
         const sortAsc = ref(false);
         const socketTab = ref('tcp');
@@ -74,6 +76,15 @@ const app = createApp({
         // Docker modal
         const selectedContainer = ref(null);
         const containerLoading = ref(false);
+
+        // Docker extended info
+        const containerLogs = ref('');
+        const containerLogsLoading = ref(false);
+        const containerLogsTail = ref(100);
+        const containerTop = ref([]);
+        const containerTopLoading = ref(false);
+        const containerInspect = ref('');
+        const showInspectModal = ref(false);
 
         // Show all items toggles (for "... and X more" links)
         const showAllFds = ref(false);
@@ -159,7 +170,7 @@ const app = createApp({
         });
 
         const filteredSockets = computed(() => {
-            const filter = globalSearch.value?.toLowerCase();
+            const filter = (globalSearch.value || socketFilter.value)?.toLowerCase();
             if (!filter) return currentSockets.value;
 
             return currentSockets.value.filter(s =>
@@ -174,7 +185,7 @@ const app = createApp({
         });
 
         const filteredContainers = computed(() => {
-            const filter = globalSearch.value?.toLowerCase();
+            const filter = (globalSearch.value || dockerFilter.value)?.toLowerCase();
             if (!filter) return docker.value.containers || [];
 
             return (docker.value.containers || []).filter(c =>
@@ -608,11 +619,18 @@ const app = createApp({
         const showContainerDetail = async (containerId) => {
             containerLoading.value = true;
             selectedContainer.value = { id: containerId };
+            // Reset extended state
+            resetContainerExtended();
 
             try {
                 const res = await fetch(`/api/docker/${encodeURIComponent(containerId)}`);
                 if (res.ok) {
                     selectedContainer.value = await res.json();
+                    // Auto-load processes and logs if container is running
+                    if (selectedContainer.value.state === 'running') {
+                        fetchContainerTop(containerId);
+                    }
+                    fetchContainerLogs(containerId);
                 } else {
                     selectedContainer.value = { id: containerId, error: 'Failed to load container info' };
                 }
@@ -625,7 +643,7 @@ const app = createApp({
         };
 
         const dockerAction = async (containerId, action) => {
-            const actionNames = { stop: 'Stop', start: 'Start', restart: 'Restart', kill: 'Kill' };
+            const actionNames = { stop: 'Stop', start: 'Start', restart: 'Restart', kill: 'Kill', pause: 'Pause', unpause: 'Unpause' };
             if (!confirm(`${actionNames[action]} container ${containerId.substring(0, 12)}?`)) return;
 
             try {
@@ -644,6 +662,85 @@ const app = createApp({
             } catch (e) {
                 showToast('Error: ' + e.message, 'error');
             }
+        };
+
+        // Fetch container logs
+        const fetchContainerLogs = async (containerId, tail = null) => {
+            if (tail) {
+                containerLogsTail.value = tail;
+            }
+            containerLogsLoading.value = true;
+
+            try {
+                const res = await fetch(`/api/docker/${encodeURIComponent(containerId)}/logs?tail=${containerLogsTail.value}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    containerLogs.value = data.logs || '';
+                    // Scroll logs to bottom after DOM update
+                    setTimeout(() => {
+                        const logsEl = document.querySelector('.logs-content');
+                        if (logsEl) {
+                            logsEl.scrollTop = logsEl.scrollHeight;
+                        }
+                    }, 50);
+                } else {
+                    showToast('Failed to fetch logs', 'error');
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            } finally {
+                containerLogsLoading.value = false;
+            }
+        };
+
+        // Load more logs (double the current amount)
+        const loadMoreLogs = async (containerId) => {
+            const newTail = containerLogsTail.value * 2;
+            await fetchContainerLogs(containerId, newTail);
+        };
+
+        // Fetch container top (processes)
+        const fetchContainerTop = async (containerId) => {
+            containerTopLoading.value = true;
+
+            try {
+                const res = await fetch(`/api/docker/${encodeURIComponent(containerId)}/top`);
+                if (res.ok) {
+                    const data = await res.json();
+                    containerTop.value = data.processes || [];
+                } else {
+                    showToast('Failed to fetch processes', 'error');
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            } finally {
+                containerTopLoading.value = false;
+            }
+        };
+
+        // Fetch raw inspect JSON
+        const fetchContainerInspect = async (containerId) => {
+            try {
+                const res = await fetch(`/api/docker/${encodeURIComponent(containerId)}/inspect`);
+                if (res.ok) {
+                    const data = await res.json();
+                    containerInspect.value = data.inspect || '';
+                    showInspectModal.value = true;
+                } else {
+                    showToast('Failed to fetch inspect data', 'error');
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        };
+
+        // Reset container extended state
+        const resetContainerExtended = () => {
+            containerLogs.value = '';
+            containerLogsTail.value = 100;
+            containerTop.value = [];
+            containerInspect.value = '';
+            showInspectModal.value = false;
         };
 
         const clearGlobalSearch = () => {
@@ -988,6 +1085,8 @@ const app = createApp({
             maximizedPanel,
             toggleMaximize,
             processFilter,
+            dockerFilter,
+            socketFilter,
             sortKey,
             sortAsc,
             socketTab,
@@ -1011,6 +1110,13 @@ const app = createApp({
             // Docker modal
             selectedContainer,
             containerLoading,
+            containerLogs,
+            containerLogsLoading,
+            containerLogsTail,
+            containerTop,
+            containerTopLoading,
+            containerInspect,
+            showInspectModal,
 
             // Show all items toggles
             showAllFds,
@@ -1068,7 +1174,12 @@ const app = createApp({
             dockerAction,
             clearGlobalSearch,
             hasComposeLabels,
-            filteredLabels
+            filteredLabels,
+            fetchContainerLogs,
+            loadMoreLogs,
+            fetchContainerTop,
+            fetchContainerInspect,
+            resetContainerExtended
         };
     }
 });

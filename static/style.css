@@ -705,7 +705,7 @@ main {
 
 /* Process Panel */
 .processes-panel {
-    min-height: 400px;
+    min-height: 100px;
 }
 
 .process-controls {
@@ -2379,12 +2379,51 @@ main.compact .gpu-stats {
 }
 
 .btn-success {
+    padding: 12px 20px;
     background: var(--success-color);
     color: #fff;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
 }
 
 .btn-success:hover {
     background: #16a34a;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    padding: 12px 20px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+    background: var(--bg-secondary);
+    transform: translateY(-1px);
+}
+
+.btn-info {
+    padding: 12px 20px;
+    background: #0ea5e9;
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-info:hover {
+    background: #0284c7;
+    transform: translateY(-1px);
 }
 
 .action-btn.success {
@@ -2462,4 +2501,132 @@ main.maximized .row {
     background: var(--warning-color);
     color: #000;
     border-color: var(--warning-color);
+}
+
+/* Docker Extended Features */
+
+/* Refresh button inline with h3 */
+.refresh-btn {
+    display: inline-block;
+    padding: 4px 10px;
+    margin-left: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    vertical-align: middle;
+}
+
+.refresh-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Logs info text */
+.logs-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: normal;
+    margin-left: 8px;
+}
+
+/* Logs container */
+.logs-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.logs-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+}
+
+.load-more-btn {
+    align-self: center;
+    padding: 8px 16px;
+    font-size: 13px;
+}
+
+/* No data message */
+.no-data {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 10px 0;
+}
+
+/* Health check status colors */
+.health-healthy {
+    color: var(--success-color);
+    font-weight: 500;
+}
+
+.health-unhealthy {
+    color: var(--danger-color);
+    font-weight: 500;
+}
+
+.health-starting {
+    color: var(--warning-color);
+    font-weight: 500;
+}
+
+.health-none {
+    color: var(--text-muted);
+}
+
+/* Inspect modal - needs higher z-index to appear above container detail */
+.inspect-overlay {
+    z-index: 1100;
+}
+
+.inspect-modal {
+    max-width: 900px;
+    max-height: 85vh;
+}
+
+.inspect-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    max-height: 70vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+}
+
+/* Inspect button row */
+.inspect-btn-row {
+    text-align: center;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 10px;
+}
+
+/* Container paused state */
+.status-paused {
+    color: var(--info-color);
 }
