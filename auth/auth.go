@@ -1,12 +1,19 @@
 package auth
 
 import (
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
 	"sync"
 	"time"
 )
+
+// HashPassword generates md5 hash of "syspeek_" + password
+func HashPassword(password string) string {
+	hash := md5.Sum([]byte("syspeek_" + password))
+	return hex.EncodeToString(hash[:])
+}
 
 type Session struct {
 	Token     string
@@ -83,9 +90,13 @@ func (am *AuthManager) IsAdminMode() bool {
 }
 
 // Login attempts to authenticate and returns (token, readWrite, success)
+// The password parameter is the plain-text password from the user.
+// It gets hashed and compared against the stored hash in config.
 func (am *AuthManager) Login(username, password string) (string, bool, bool) {
+	hashedPassword := HashPassword(password)
+
 	// Try read-write credentials first
-	if am.hasReadWrite && username == am.username && password == am.password {
+	if am.hasReadWrite && username == am.username && hashedPassword == am.password {
 		token := generateToken()
 		session := &Session{
 			Token:     token,
@@ -101,7 +112,7 @@ func (am *AuthManager) Login(username, password string) (string, bool, bool) {
 	}
 
 	// Try read-only credentials
-	if am.hasReadOnly && username == am.readOnlyUsername && password == am.readOnlyPassword {
+	if am.hasReadOnly && username == am.readOnlyUsername && hashedPassword == am.readOnlyPassword {
 		token := generateToken()
 		session := &Session{
 			Token:     token,
