@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,24 +31,26 @@ type Mount struct {
 }
 
 type Container struct {
-	ID           string        `json:"id"`
-	Name         string        `json:"name"`
-	Image        string        `json:"image"`
-	Command      string        `json:"command"`
-	Created      string        `json:"created"`
-	State        string        `json:"state"`
-	Status       string        `json:"status"`
-	Ports        string        `json:"ports"` // For list view (simple string)
-	PortMappings []PortMapping `json:"portMappings,omitempty"` // For detail view
-	Mounts       []Mount       `json:"mounts,omitempty"`
-	Env          []string      `json:"env,omitempty"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Image        string            `json:"image"`
+	Command      string            `json:"command"`
+	Created      string            `json:"created"`
+	State        string            `json:"state"`
+	Status       string            `json:"status"`
+	ExitCode     *int              `json:"exitCode,omitempty"` // nil if running, 0+ if exited
+	Ports        string            `json:"ports"`                  // For list view (simple string)
+	PortMappings []PortMapping     `json:"portMappings,omitempty"` // For detail view
+	Mounts       []Mount           `json:"mounts,omitempty"`
+	Env          []string          `json:"env,omitempty"`
+	Labels       map[string]string `json:"labels,omitempty"` // All labels including compose info
 	// Stats
-	CPUPercent   float64 `json:"cpuPercent,omitempty"`
-	MemoryUsage  uint64  `json:"memoryUsage,omitempty"`
-	MemoryLimit  uint64  `json:"memoryLimit,omitempty"`
-	NetworkRx    uint64  `json:"networkRx,omitempty"`
-	NetworkTx    uint64  `json:"networkTx,omitempty"`
-	PIDs         int     `json:"pids,omitempty"`
+	CPUPercent  float64 `json:"cpuPercent,omitempty"`
+	MemoryUsage uint64  `json:"memoryUsage,omitempty"`
+	MemoryLimit uint64  `json:"memoryLimit,omitempty"`
+	NetworkRx   uint64  `json:"networkRx,omitempty"`
+	NetworkTx   uint64  `json:"networkTx,omitempty"`
+	PIDs        int     `json:"pids,omitempty"`
 }
 
 type DockerInfo struct {
@@ -55,6 +59,18 @@ type DockerInfo struct {
 }
 
 var dockerAvailable *bool
+var exitCodeRegex = regexp.MustCompile(`Exited \((\d+)\)`)
+
+// parseExitCode extracts the exit code from status like "Exited (1) 2 hours ago"
+func parseExitCode(status string) *int {
+	matches := exitCodeRegex.FindStringSubmatch(status)
+	if len(matches) >= 2 {
+		if code, err := strconv.Atoi(matches[1]); err == nil {
+			return &code
+		}
+	}
+	return nil
+}
 
 func checkDockerAvailable() bool {
 	if dockerAvailable != nil {
@@ -127,14 +143,15 @@ func getContainerList() []Container {
 		}
 
 		containers = append(containers, Container{
-			ID:      raw.ID,
-			Name:    strings.TrimPrefix(raw.Names, "/"),
-			Image:   raw.Image,
-			Command: raw.Command,
-			Created: raw.Created,
-			State:   strings.ToLower(raw.State),
-			Status:  raw.Status,
-			Ports:   raw.Ports,
+			ID:       raw.ID,
+			Name:     strings.TrimPrefix(raw.Names, "/"),
+			Image:    raw.Image,
+			Command:  raw.Command,
+			Created:  raw.Created,
+			State:    strings.ToLower(raw.State),
+			Status:   raw.Status,
+			ExitCode: parseExitCode(raw.Status),
+			Ports:    raw.Ports,
 		})
 	}
 
@@ -165,9 +182,10 @@ func GetContainerDetail(containerID string) (*Container, error) {
 			Pid    int    `json:"Pid"`
 		} `json:"State"`
 		Config struct {
-			Image string   `json:"Image"`
-			Cmd   []string `json:"Cmd"`
-			Env   []string `json:"Env"`
+			Image  string            `json:"Image"`
+			Cmd    []string          `json:"Cmd"`
+			Env    []string          `json:"Env"`
+			Labels map[string]string `json:"Labels"`
 		} `json:"Config"`
 		HostConfig struct {
 			PortBindings map[string][]struct {
@@ -267,6 +285,7 @@ func GetContainerDetail(containerID string) (*Container, error) {
 		PortMappings: ports,
 		Mounts:       mounts,
 		Env:          data.Config.Env,
+		Labels:       data.Config.Labels,
 		CPUPercent:   cpuPercent,
 		MemoryUsage:  memUsage,
 		MemoryLimit:  memLimit,

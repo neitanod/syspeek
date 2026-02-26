@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -51,6 +52,7 @@ type cpuTimes struct {
 
 var previousCPUTimes map[int]cpuTimes
 var previousTotalTimes map[int]cpuTimes
+var cpuMutex sync.Mutex
 
 func init() {
 	previousCPUTimes = make(map[int]cpuTimes)
@@ -167,8 +169,10 @@ func GetCPUInfo() (*CPUInfo, error) {
 }
 
 func calculateCPUUsage(coreID int, current cpuTimes) float64 {
+	cpuMutex.Lock()
 	prev, exists := previousCPUTimes[coreID]
 	previousCPUTimes[coreID] = current
+	cpuMutex.Unlock()
 
 	if !exists {
 		return 0

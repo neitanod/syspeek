@@ -8,50 +8,57 @@ import (
 )
 
 func (a *API) SetupRoutes(mux *http.ServeMux, authMgr *auth.AuthManager) {
-	// API endpoints
-	mux.HandleFunc("/api/cpu", a.HandleCPU)
-	mux.HandleFunc("/api/memory", a.HandleMemory)
-	mux.HandleFunc("/api/disk", a.HandleDisk)
-	mux.HandleFunc("/api/network", a.HandleNetwork)
-	mux.HandleFunc("/api/gpu", a.HandleGPU)
-	mux.HandleFunc("/api/processes", a.HandleProcesses)
-	mux.HandleFunc("/api/sockets", a.HandleSockets)
-	mux.HandleFunc("/api/firewall", a.HandleFirewall)
-	mux.HandleFunc("/api/config", a.HandleConfig)
+	// API endpoints - read-only, but may require login depending on mode
+	mux.HandleFunc("/api/cpu", authMgr.Middleware(a.HandleCPU, false))
+	mux.HandleFunc("/api/memory", authMgr.Middleware(a.HandleMemory, false))
+	mux.HandleFunc("/api/disk", authMgr.Middleware(a.HandleDisk, false))
+	mux.HandleFunc("/api/network", authMgr.Middleware(a.HandleNetwork, false))
+	mux.HandleFunc("/api/gpu", authMgr.Middleware(a.HandleGPU, false))
+	mux.HandleFunc("/api/processes", authMgr.Middleware(a.HandleProcesses, false))
+	mux.HandleFunc("/api/sockets", authMgr.Middleware(a.HandleSockets, false))
+	mux.HandleFunc("/api/firewall", authMgr.Middleware(a.HandleFirewall, false))
+	mux.HandleFunc("/api/config", authMgr.Middleware(a.HandleConfig, false))
 
-	// SSE stream
-	mux.HandleFunc("/api/stream", a.HandleSSE)
+	// SSE stream - read-only but may require login
+	mux.HandleFunc("/api/stream", authMgr.Middleware(a.HandleSSE, false))
 
-	// Auth endpoints
+	// Auth endpoints - always accessible (for login flow)
 	mux.HandleFunc("/api/auth/login", a.HandleLogin)
 	mux.HandleFunc("/api/auth/logout", a.HandleLogout)
 	mux.HandleFunc("/api/auth/status", a.HandleAuthStatus)
 
-	// Process endpoints with dynamic PID - use a wrapper to handle routing
+	// Close endpoint - for desktop mode (ignored in serve mode)
+	mux.HandleFunc("/api/close", a.HandleClose)
+
+	// Process endpoints with dynamic PID
 	mux.HandleFunc("/api/process/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
 		// Route based on path pattern
 		if strings.HasSuffix(path, "/kill") {
-			authMgr.Middleware(a.HandleProcessKill, true)(w, r)
+			// Requires read-write access
+			authMgr.MiddlewareReadWrite(a.HandleProcessKill)(w, r)
 		} else if strings.HasSuffix(path, "/renice") {
-			authMgr.Middleware(a.HandleProcessRenice, true)(w, r)
+			// Requires read-write access
+			authMgr.MiddlewareReadWrite(a.HandleProcessRenice)(w, r)
 		} else {
-			// Process detail
-			a.HandleProcessDetail(w, r)
+			// Process detail - read-only
+			authMgr.Middleware(a.HandleProcessDetail, false)(w, r)
 		}
 	})
 
-	// IP lookup endpoint
-	mux.HandleFunc("/api/ip/", a.HandleIPLookup)
+	// IP lookup endpoint - read-only
+	mux.HandleFunc("/api/ip/", authMgr.Middleware(a.HandleIPLookup, false))
 
 	// User endpoints - lookup and modify
 	mux.HandleFunc("/api/user/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if strings.HasSuffix(path, "/modify") {
-			authMgr.Middleware(a.HandleUserModify, true)(w, r)
+			// Requires read-write access
+			authMgr.MiddlewareReadWrite(a.HandleUserModify)(w, r)
 		} else {
-			a.HandleUserLookup(w, r)
+			// User lookup - read-only
+			authMgr.Middleware(a.HandleUserLookup, false)(w, r)
 		}
 	})
 
@@ -59,17 +66,19 @@ func (a *API) SetupRoutes(mux *http.ServeMux, authMgr *auth.AuthManager) {
 	mux.HandleFunc("/api/group/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if strings.HasSuffix(path, "/remove") {
-			authMgr.Middleware(a.HandleGroupRemoveUser, true)(w, r)
+			// Requires read-write access
+			authMgr.MiddlewareReadWrite(a.HandleGroupRemoveUser)(w, r)
 		} else {
-			a.HandleGroupLookup(w, r)
+			// Group lookup - read-only
+			authMgr.Middleware(a.HandleGroupLookup, false)(w, r)
 		}
 	})
 
-	// Service PID endpoint
-	mux.HandleFunc("/api/pid", a.HandleServicePID)
+	// Service PID endpoint - read-only
+	mux.HandleFunc("/api/pid", authMgr.Middleware(a.HandleServicePID, false))
 
 	// Docker endpoints
-	mux.HandleFunc("/api/docker", a.HandleDocker)
+	mux.HandleFunc("/api/docker", authMgr.Middleware(a.HandleDocker, false))
 	mux.HandleFunc("/api/docker/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
@@ -78,10 +87,11 @@ func (a *API) SetupRoutes(mux *http.ServeMux, authMgr *auth.AuthManager) {
 			strings.HasSuffix(path, "/stop") ||
 			strings.HasSuffix(path, "/restart") ||
 			strings.HasSuffix(path, "/kill") {
-			authMgr.Middleware(a.HandleDockerAction, true)(w, r)
+			// Requires read-write access
+			authMgr.MiddlewareReadWrite(a.HandleDockerAction)(w, r)
 		} else {
-			// Container detail
-			a.HandleDockerContainer(w, r)
+			// Container detail - read-only
+			authMgr.Middleware(a.HandleDockerContainer, false)(w, r)
 		}
 	})
 }

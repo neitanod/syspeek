@@ -19,8 +19,10 @@ type ServerConfig struct {
 }
 
 type AuthConfig struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username         string `json:"username"`
+	Password         string `json:"password"`
+	ReadOnlyUsername string `json:"readOnlyUsername"`
+	ReadOnlyPassword string `json:"readOnlyPassword"`
 }
 
 type UIConfig struct {
@@ -67,8 +69,10 @@ func DefaultConfig() *Config {
 			},
 		},
 		Auth: AuthConfig{
-			Username: "",
-			Password: "",
+			Username:         "",
+			Password:         "",
+			ReadOnlyUsername: "",
+			ReadOnlyPassword: "",
 		},
 		UI: UIConfig{
 			Title:       hostname,
@@ -120,6 +124,14 @@ func (c *Config) ToJSON() (string, error) {
 
 func (c *Config) HasAuth() bool {
 	return c.Auth.Username != "" && c.Auth.Password != ""
+}
+
+func (c *Config) HasReadOnlyAuth() bool {
+	return c.Auth.ReadOnlyUsername != "" && c.Auth.ReadOnlyPassword != ""
+}
+
+func (c *Config) HasAnyAuth() bool {
+	return c.HasAuth() || c.HasReadOnlyAuth()
 }
 
 func (c *Config) GetAddress() string {

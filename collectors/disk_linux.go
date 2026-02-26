@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -34,6 +35,7 @@ type DiskInfo struct {
 }
 
 var previousDiskIO map[string]DiskIO
+var diskMutex sync.Mutex
 
 func init() {
 	previousDiskIO = make(map[string]DiskIO)
@@ -150,6 +152,7 @@ func GetDiskInfo() (*DiskInfo, error) {
 			}
 
 			// Calculate speed based on previous reading
+			diskMutex.Lock()
 			if prev, exists := previousDiskIO[device]; exists {
 				io.ReadSpeed = readBytes - prev.ReadBytes
 				io.WriteSpeed = writeBytes - prev.WriteBytes
@@ -160,6 +163,7 @@ func GetDiskInfo() (*DiskInfo, error) {
 				ReadBytes:  readBytes,
 				WriteBytes: writeBytes,
 			}
+			diskMutex.Unlock()
 
 			info.IO = append(info.IO, io)
 		}

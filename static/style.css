@@ -218,6 +218,22 @@ button {
     letter-spacing: 0.5px;
 }
 
+.admin-badge {
+    padding: 8px 14px;
+    background: var(--accent-color);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+[data-theme="light"] .admin-badge {
+    background: var(--accent-color);
+    color: #fff;
+}
+
 /* Main Layout */
 main {
     padding: 20px;
@@ -277,6 +293,7 @@ main {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
     padding: 16px 20px;
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
@@ -287,6 +304,13 @@ main {
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.3px;
+}
+
+.panel-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto;
 }
 
 .panel-content {
@@ -686,8 +710,9 @@ main {
 
 .process-controls {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     align-items: center;
+    margin-left: auto;
 }
 
 .filter-input {
@@ -1176,6 +1201,16 @@ code {
     font-weight: 500;
 }
 
+.more a {
+    color: var(--accent-color);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.more a:hover {
+    text-decoration: underline;
+}
+
 .modal-actions {
     display: flex;
     gap: 14px;
@@ -1301,62 +1336,120 @@ code {
 
 /* Compact Mode */
 main.compact {
-    padding: 12px;
-    gap: 12px;
+    padding: 8px;
+    gap: 8px;
 }
 
 main.compact .row {
-    gap: 12px;
+    gap: 8px;
+}
+
+main.compact .panel {
+    border-radius: var(--radius-sm);
 }
 
 main.compact .panel-header {
-    padding: 10px 14px;
+    padding: 6px 10px;
 }
 
 main.compact .panel-header h2 {
-    font-size: 14px;
+    font-size: 13px;
 }
 
 main.compact .panel-content {
-    padding: 14px;
+    padding: 8px;
 }
 
 main.compact .cores-grid {
-    gap: 4px;
+    gap: 3px;
 }
 
 main.compact .core-bar {
-    padding: 4px 6px;
+    padding: 2px 4px;
 }
 
 main.compact .bar-container {
-    height: 8px;
+    height: 6px;
 }
 
 main.compact .bar-container.large {
-    height: 10px;
+    height: 8px;
+}
+
+main.compact .stat-item {
+    padding: 6px 8px;
+}
+
+main.compact .stat-label {
+    margin-bottom: 2px;
+}
+
+main.compact .stats-grid {
+    gap: 6px;
 }
 
 main.compact .process-table th,
 main.compact .process-table td {
-    padding: 8px 10px;
-    font-size: 13px;
+    padding: 4px 6px;
+    font-size: 12px;
 }
 
 main.compact .socket-table th,
 main.compact .socket-table td,
 main.compact .firewall-table th,
 main.compact .firewall-table td {
-    padding: 6px 8px;
-    font-size: 12px;
+    padding: 4px 6px;
+    font-size: 11px;
+}
+
+main.compact .docker-table th,
+main.compact .docker-table td {
+    padding: 4px 8px;
+}
+
+main.compact .docker-table .status-icon-cell {
+    padding: 4px 4px !important;
+}
+
+main.compact .tabs {
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+main.compact .tab-btn {
+    padding: 4px 10px;
 }
 
 main.compact .cpu-usage {
-    font-size: 22px;
+    font-size: 20px;
 }
 
 main.compact .net-speed {
-    font-size: 18px;
+    font-size: 16px;
+}
+
+main.compact .memory-details,
+main.compact .disk-list,
+main.compact .net-interfaces {
+    gap: 6px;
+}
+
+main.compact .disk-item,
+main.compact .net-interface {
+    padding: 6px 8px;
+}
+
+main.compact .search-container {
+    margin-bottom: 8px;
+}
+
+main.compact .search-container input {
+    padding: 6px 10px 6px 32px;
+}
+
+main.compact .action-btn {
+    padding: 3px 8px;
+    font-size: 11px;
 }
 
 /* Scrollbars */
@@ -1963,12 +2056,24 @@ main.compact .alert-bells {
 }
 
 main.compact .alert-bell {
-    padding: 2px 4px;
-    font-size: 10px;
+    padding: 1px 3px;
+    font-size: 9px;
 }
 
 main.compact .alert-bell .bell-icon {
-    font-size: 10px;
+    font-size: 9px;
+}
+
+main.compact .gpu-card {
+    padding: 6px 8px;
+}
+
+main.compact .gpu-header {
+    margin-bottom: 6px;
+}
+
+main.compact .gpu-stats {
+    gap: 6px;
 }
 
 /* Mobile responsive */
@@ -2117,6 +2222,36 @@ main.compact .alert-bell .bell-icon {
     color: var(--info-color);
 }
 
+/* Docker status icons */
+.docker-table .status-icon-col {
+    width: 30px;
+    padding: 0 !important;
+}
+
+.docker-table .status-icon-cell {
+    width: 30px;
+    text-align: center;
+    padding: 10px 8px !important;
+}
+
+.status-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.status-icon.running {
+    color: var(--success-color);
+}
+
+.status-icon.stopped {
+    color: var(--danger-color);
+}
+
+.status-icon.error {
+    color: var(--warning-color);
+    font-size: 12px;
+}
+
 /* Docker Detail Modal */
 .docker-detail-modal {
     max-width: 900px;
@@ -2196,6 +2331,53 @@ main.compact .alert-bell .bell-icon {
     word-break: break-all;
 }
 
+/* Docker Labels */
+.compose-info {
+    background: var(--hover-bg);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-left: 3px solid var(--accent-color);
+}
+
+.compose-info .detail-row {
+    margin-bottom: 6px;
+}
+
+.compose-info .detail-row:last-child {
+    margin-bottom: 0;
+}
+
+.compose-info strong {
+    color: var(--accent-color);
+}
+
+.labels-list {
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 11px;
+}
+
+.label-item {
+    display: flex;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color);
+    align-items: flex-start;
+}
+
+.label-key {
+    color: var(--text-muted);
+    min-width: 200px;
+    flex-shrink: 0;
+    word-break: break-all;
+}
+
+.label-value code {
+    word-break: break-all;
+    font-size: 11px;
+}
+
 .btn-success {
     background: var(--success-color);
     color: #fff;
@@ -2221,4 +2403,63 @@ main.compact .alert-bell .bell-icon {
 
 .action-btn.warning:hover {
     background: #d97706;
+}
+
+/* Maximize Panel Functionality */
+.maximize-btn {
+    padding: 8px 14px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.maximize-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+/* Main in maximized mode */
+main.maximized {
+    padding: 0;
+    gap: 0;
+}
+
+main.maximized .row {
+    display: contents;
+}
+
+/* Panel maximized state */
+.panel-maximized {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    border-radius: 0;
+    max-height: 100vh;
+    overflow: auto;
+}
+
+.panel-maximized .panel-content {
+    max-height: calc(100vh - 60px);
+    overflow: auto;
+}
+
+/* Ensure tables in maximized panels expand properly */
+.panel-maximized .process-table-container,
+.panel-maximized .socket-table-container,
+.panel-maximized .firewall-rules {
+    max-height: calc(100vh - 120px);
+}
+
+/* Make the maximize button more visible when panel is maximized */
+.panel-maximized .maximize-btn {
+    background: var(--warning-color);
+    color: #000;
+    border-color: var(--warning-color);
 }

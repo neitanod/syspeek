@@ -2,10 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"syspeek/auth"
 	"syspeek/collectors"
@@ -13,8 +16,9 @@ import (
 )
 
 type API struct {
-	config *config.Config
-	auth   *auth.AuthManager
+	config    *config.Config
+	auth      *auth.AuthManager
+	serveMode bool // true = server mode, false = desktop mode (close on browser exit)
 }
 
 type LoginRequest struct {
@@ -23,14 +27,20 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message,omitempty"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message,omitempty"`
+	ReadWrite bool   `json:"readWrite,omitempty"`
 }
 
 type StatusResponse struct {
-	Authenticated bool   `json:"authenticated"`
-	AuthEnabled   bool   `json:"authEnabled"`
-	Username      string `json:"username,omitempty"`
+	Authenticated    bool   `json:"authenticated"`
+	AuthEnabled      bool   `json:"authEnabled"`
+	ReadWrite        bool   `json:"readWrite"`
+	IsPublic         bool   `json:"isPublic"`
+	IsAdmin          bool   `json:"isAdmin"`
+	RequiresLogin    bool   `json:"requiresLogin"`
+	HasReadWriteAuth bool   `json:"hasReadWriteAuth"`
+	Username         string `json:"username,omitempty"`
 }
 
 type ActionRequest struct {
@@ -43,11 +53,42 @@ type ActionResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
-func NewAPI(cfg *config.Config, authMgr *auth.AuthManager) *API {
+func NewAPI(cfg *config.Config, authMgr *auth.AuthManager, serveMode bool) *API {
 	return &API{
-		config: cfg,
-		auth:   authMgr,
+		config:    cfg,
+		auth:      authMgr,
+		serveMode: serveMode,
 	}
+}
+
+// HandleClose shuts down the server (only in desktop mode, ignored in serve mode)
+func (a *API) HandleClose(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// In serve mode, ignore close requests
+	if a.serveMode {
+		json.NewEncoder(w).Encode(map[string]any{
+			"success": false,
+			"message": "Close not available in serve mode",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"message": "Server shutting down",
+	})
+
+	// Give time for response to be sent, then exit
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		fmt.Println("Browser closed. Exiting.")
+		os.Exit(0)
+	}()
 }
 
 func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +106,7 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, ok := a.auth.Login(req.Username, req.Password)
+	token, readWrite, ok := a.auth.Login(req.Username, req.Password)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, LoginResponse{
 			Success: false,
@@ -84,7 +125,8 @@ func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, LoginResponse{
-		Success: true,
+		Success:   true,
+		ReadWrite: readWrite,
 	})
 }
 
@@ -113,13 +155,23 @@ func (a *API) HandleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	status := StatusResponse{
-		AuthEnabled: a.auth.IsEnabled(),
+		AuthEnabled:      a.auth.IsEnabled(),
+		IsPublic:         a.auth.IsPublic(),
+		IsAdmin:          a.auth.IsAdminMode(),
+		RequiresLogin:    a.auth.RequiresLoginForReadOnly(),
+		HasReadWriteAuth: a.auth.HasReadWriteAuth(),
 	}
 
-	if cookie, err := r.Cookie("session"); err == nil {
+	// In admin mode, always report as authenticated with read-write
+	if a.auth.IsAdminMode() {
+		status.Authenticated = true
+		status.ReadWrite = true
+		status.Username = "admin"
+	} else if cookie, err := r.Cookie("session"); err == nil {
 		if session := a.auth.GetSession(cookie.Value); session != nil {
 			status.Authenticated = true
 			status.Username = session.Username
+			status.ReadWrite = session.ReadWrite
 		}
 	}
 

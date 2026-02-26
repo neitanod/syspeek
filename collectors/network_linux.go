@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type NetworkInterface struct {
@@ -32,6 +33,7 @@ type NetworkInfo struct {
 }
 
 var previousNetStats map[string]NetworkInterface
+var netMutex sync.Mutex
 
 func init() {
 	previousNetStats = make(map[string]NetworkInterface)
@@ -123,6 +125,7 @@ func GetNetworkInfo() (*NetworkInfo, error) {
 			ni.TxPackets = stats.txPackets
 
 			// Calculate speed
+			netMutex.Lock()
 			if prev, exists := previousNetStats[iface.Name]; exists {
 				ni.RxSpeed = ni.RxBytes - prev.RxBytes
 				ni.TxSpeed = ni.TxBytes - prev.TxBytes
@@ -133,6 +136,7 @@ func GetNetworkInfo() (*NetworkInfo, error) {
 				RxBytes: ni.RxBytes,
 				TxBytes: ni.TxBytes,
 			}
+			netMutex.Unlock()
 
 			info.TotalRxBytes += ni.RxBytes
 			info.TotalTxBytes += ni.TxBytes

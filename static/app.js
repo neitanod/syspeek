@@ -7,8 +7,13 @@ const app = createApp({
         const theme = ref('dark');
         const compact = ref(true);
         const authenticated = ref(false);
+        const readWrite = ref(false);
         const username = ref('');
         const showLogin = ref(false);
+        const requiresLogin = ref(false);
+        const isPublic = ref(true);
+        const isAdmin = ref(false);
+        const hasReadWriteAuth = ref(false);
         const loginForm = ref({ username: '', password: '' });
         const loginError = ref('');
 
@@ -40,6 +45,11 @@ const app = createApp({
             docker: false
         });
         const pausedAll = ref(false);
+        const maximizedPanel = ref(null); // null or panel name: 'cpu', 'memory', 'disk', 'network', 'gpu', 'processes', 'sockets', 'firewall', 'docker'
+
+        const toggleMaximize = (panel) => {
+            maximizedPanel.value = maximizedPanel.value === panel ? null : panel;
+        };
 
         const processFilter = ref('');
         const sortKey = ref('cpuPercent');
@@ -64,6 +74,10 @@ const app = createApp({
         // Docker modal
         const selectedContainer = ref(null);
         const containerLoading = ref(false);
+
+        // Show all items toggles (for "... and X more" links)
+        const showAllFds = ref(false);
+        const showAllEnv = ref(false);
 
         // Service PID (to prevent self-kill)
         const servicePid = ref(null);
@@ -168,6 +182,17 @@ const app = createApp({
                 c.image?.toLowerCase().includes(filter) ||
                 c.id?.toLowerCase().includes(filter) ||
                 c.status?.toLowerCase().includes(filter)
+            );
+        });
+
+        const filteredInterfaces = computed(() => {
+            const filter = globalSearch.value?.toLowerCase();
+            if (!filter) return network.value.interfaces || [];
+
+            return (network.value.interfaces || []).filter(iface =>
+                iface.name?.toLowerCase().includes(filter) ||
+                iface.ipAddresses?.some(ip => ip.toLowerCase().includes(filter)) ||
+                iface.mac?.toLowerCase().includes(filter)
             );
         });
 
@@ -307,7 +332,17 @@ const app = createApp({
                 const res = await fetch('/api/auth/status');
                 const data = await res.json();
                 authenticated.value = data.authenticated;
+                readWrite.value = data.readWrite;
                 username.value = data.username || '';
+                requiresLogin.value = data.requiresLogin;
+                isPublic.value = data.isPublic;
+                isAdmin.value = data.isAdmin;
+                hasReadWriteAuth.value = data.hasReadWriteAuth;
+
+                // Show login modal if login is required and not authenticated
+                if (requiresLogin.value && !authenticated.value) {
+                    showLogin.value = true;
+                }
             } catch (e) {
                 console.error('Failed to check auth:', e);
             }
@@ -324,6 +359,7 @@ const app = createApp({
                 const data = await res.json();
                 if (data.success) {
                     authenticated.value = true;
+                    readWrite.value = data.readWrite;
                     username.value = loginForm.value.username;
                     showLogin.value = false;
                     loginForm.value = { username: '', password: '' };
@@ -339,7 +375,12 @@ const app = createApp({
             try {
                 await fetch('/api/auth/logout', { method: 'POST' });
                 authenticated.value = false;
+                readWrite.value = false;
                 username.value = '';
+                // Show login again if required
+                if (requiresLogin.value) {
+                    showLogin.value = true;
+                }
             } catch (e) {
                 console.error('Logout failed:', e);
             }
@@ -609,6 +650,24 @@ const app = createApp({
             globalSearch.value = '';
         };
 
+        // Docker label helpers
+        const hasComposeLabels = (labels) => {
+            if (!labels) return false;
+            return Object.keys(labels).some(k => k.startsWith('com.docker.compose.'));
+        };
+
+        const filteredLabels = (labels) => {
+            if (!labels) return {};
+            // Filter out compose labels (shown separately) and show other labels
+            const result = {};
+            for (const [key, value] of Object.entries(labels)) {
+                if (!key.startsWith('com.docker.compose.')) {
+                    result[key] = value;
+                }
+            }
+            return result;
+        };
+
         // Alert system functions
         const requestNotificationPermission = async () => {
             if (!('Notification' in window)) {
@@ -840,9 +899,18 @@ const app = createApp({
             }
         };
 
+        // Handle page close - notify server to shutdown (desktop mode only)
+        const handleBeforeUnload = () => {
+            // Use sendBeacon for reliable delivery on page close
+            navigator.sendBeacon('/api/close', '');
+        };
+
         onMounted(async () => {
             // Listen for clicks to close popovers
             document.addEventListener('click', handleDocumentClick);
+
+            // Listen for page close to shutdown server (desktop mode)
+            window.addEventListener('beforeunload', handleBeforeUnload);
 
             // Load saved preferences
             const savedTheme = localStorage.getItem('theme');
@@ -875,6 +943,7 @@ const app = createApp({
 
         onUnmounted(() => {
             document.removeEventListener('click', handleDocumentClick);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
             if (eventSource) {
                 eventSource.close();
                 eventSource = null;
@@ -892,8 +961,13 @@ const app = createApp({
             compact,
             connected,
             authenticated,
+            readWrite,
             username,
             showLogin,
+            requiresLogin,
+            isPublic,
+            isAdmin,
+            hasReadWriteAuth,
             loginForm,
             loginError,
 
@@ -911,6 +985,8 @@ const app = createApp({
             // UI state
             paused,
             pausedAll,
+            maximizedPanel,
+            toggleMaximize,
             processFilter,
             sortKey,
             sortAsc,
@@ -936,6 +1012,10 @@ const app = createApp({
             selectedContainer,
             containerLoading,
 
+            // Show all items toggles
+            showAllFds,
+            showAllEnv,
+
             // Service PID
             servicePid,
 
@@ -943,6 +1023,7 @@ const app = createApp({
             filteredProcesses,
             filteredSockets,
             filteredContainers,
+            filteredInterfaces,
             hasSearchResults,
             currentSockets,
 
@@ -985,7 +1066,9 @@ const app = createApp({
             // Docker
             showContainerDetail,
             dockerAction,
-            clearGlobalSearch
+            clearGlobalSearch,
+            hasComposeLabels,
+            filteredLabels
         };
     }
 });
