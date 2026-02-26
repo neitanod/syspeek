@@ -3,7 +3,6 @@
 package collectors
 
 import (
-	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -34,38 +33,73 @@ type DiskInfo struct {
 func GetDiskInfo() (DiskInfo, error) {
 	info := DiskInfo{}
 
-	// Get disk info using WMIC
-	out, err := exec.Command("wmic", "logicaldisk", "get", "DeviceID,FileSystem,FreeSpace,Size", "/value").Output()
+	// Get disk info using PowerShell
+	script := `
+Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
+    "$($_.DeviceID)|$($_.FileSystem)|$($_.Size)|$($_.FreeSpace)"
+}
+`
+	out, err := runPowerShell(script)
 	if err != nil {
 		return info, err
 	}
 
-	// Parse output - it comes in blocks separated by blank lines
-	blocks := strings.Split(string(out), "\r\n\r\n")
-	for _, block := range blocks {
-		if strings.TrimSpace(block) == "" {
+	lines := strings.Split(out, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
 
-		part := Partition{}
-		for _, line := range strings.Split(block, "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "DeviceID=") {
-				part.Device = strings.TrimPrefix(line, "DeviceID=")
-				part.MountPoint = part.Device
-			} else if strings.HasPrefix(line, "FileSystem=") {
-				part.FSType = strings.TrimPrefix(line, "FileSystem=")
-			} else if strings.HasPrefix(line, "FreeSpace=") {
-				part.Free, _ = strconv.ParseUint(strings.TrimPrefix(line, "FreeSpace="), 10, 64)
-			} else if strings.HasPrefix(line, "Size=") {
-				part.Total, _ = strconv.ParseUint(strings.TrimPrefix(line, "Size="), 10, 64)
-			}
+		parts := strings.Split(line, "|")
+		if len(parts) < 4 {
+			continue
 		}
 
-		if part.Device != "" && part.Total > 0 {
-			part.Used = part.Total - part.Free
-			part.UsedPercent = float64(part.Used) / float64(part.Total) * 100
-			info.Partitions = append(info.Partitions, part)
+		total, _ := strconv.ParseUint(parts[2], 10, 64)
+		free, _ := strconv.ParseUint(parts[3], 10, 64)
+
+		if total == 0 {
+			continue
+		}
+
+		part := Partition{
+			Device:     parts[0],
+			MountPoint: parts[0] + "\\",
+			FSType:     parts[1],
+			Total:      total,
+			Free:       free,
+			Used:       total - free,
+		}
+		part.UsedPercent = float64(part.Used) / float64(part.Total) * 100
+
+		info.Partitions = append(info.Partitions, part)
+	}
+
+	// Get disk I/O stats
+	ioScript := `
+Get-CimInstance Win32_PerfFormattedData_PerfDisk_LogicalDisk | Where-Object { $_.Name -ne '_Total' -and $_.Name -match '^[A-Z]:$' } | ForEach-Object {
+    "$($_.Name)|$($_.DiskReadBytesPerSec)|$($_.DiskWriteBytesPerSec)"
+}
+`
+	ioOut, err := runPowerShell(ioScript)
+	if err == nil {
+		lines := strings.Split(ioOut, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.Split(line, "|")
+			if len(parts) >= 3 {
+				readSpeed, _ := strconv.ParseUint(parts[1], 10, 64)
+				writeSpeed, _ := strconv.ParseUint(parts[2], 10, 64)
+				info.IO = append(info.IO, DiskIO{
+					Device:     parts[0],
+					ReadSpeed:  readSpeed,
+					WriteSpeed: writeSpeed,
+				})
+			}
 		}
 	}
 
