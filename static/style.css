@@ -2744,3 +2744,42 @@ main.maximized .row {
 .dep-tag:hover {
     background: var(--bg-hover);
 }
+
+/* Crontab section */
+.crontab-content pre {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+}
+
+.crontab-error {
+    color: var(--warning-color);
+    padding: 10px;
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.crontab-error .error-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: var(--warning-color);
+    color: #000;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 12px;
+}

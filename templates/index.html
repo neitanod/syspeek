@@ -1073,6 +1073,16 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="detail-section full-width" v-if="selectedUser.crontab || selectedUser.crontabError">
+                            <h3>Crontab / Scheduled Tasks</h3>
+                            <div v-if="selectedUser.crontabError" class="crontab-error">
+                                <span class="error-icon">!</span> {{ selectedUser.crontabError }}
+                            </div>
+                            <div v-else-if="selectedUser.crontab" class="crontab-content">
+                                <pre>{{ selectedUser.crontab }}</pre>
+                            </div>
+                            <div v-else class="no-data">No crontab entries</div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -28,6 +28,8 @@ type UserInfo struct {
 	CurrentSessions int           `json:"currentSessions"`
 	ProcessCount    int           `json:"processCount"`
 	RunningProcs    []UserProcess `json:"runningProcs,omitempty"` // PIDs with names
+	Crontab         string        `json:"crontab,omitempty"`      // User's crontab content
+	CrontabError    string        `json:"crontabError,omitempty"` // Error if couldn't read crontab
 }
 
 func GetUserInfo(username string) (*UserInfo, error) {
@@ -119,6 +121,9 @@ func parsePasswdLine(fields []string) (*UserInfo, error) {
 
 	// Get process count and PIDs
 	info.ProcessCount, info.RunningProcs = getUserProcesses(info.Username)
+
+	// Get crontab
+	info.Crontab, info.CrontabError = getUserCrontab(info.Username)
 
 	return info, nil
 }
@@ -226,4 +231,22 @@ func getUserProcesses(username string) (int, []UserProcess) {
 	}
 
 	return len(userProcs), userProcs
+}
+
+func getUserCrontab(username string) (string, string) {
+	// Try to read user's crontab using crontab -l -u username
+	// This requires root privileges or being the user
+	cmd := exec.Command("crontab", "-l", "-u", username)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		outputStr := strings.TrimSpace(string(output))
+		// Check if it's "no crontab for user"
+		if strings.Contains(outputStr, "no crontab") {
+			return "", "" // No crontab, not an error
+		}
+		// Permission denied or other error
+		return "", outputStr
+	}
+
+	return strings.TrimSpace(string(output)), ""
 }

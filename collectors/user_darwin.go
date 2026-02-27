@@ -23,6 +23,8 @@ type UserInfo struct {
 	CurrentSessions int           `json:"currentSessions"`
 	ProcessCount    int           `json:"processCount"`
 	RunningProcs    []ProcessInfo `json:"runningProcs,omitempty"`
+	Crontab         string        `json:"crontab,omitempty"`
+	CrontabError    string        `json:"crontabError,omitempty"`
 }
 
 func GetUserInfo(usernameOrUID string) (*UserInfo, error) {
@@ -108,5 +110,21 @@ func GetUserInfo(usernameOrUID string) (*UserInfo, error) {
 		info.RunningProcs = procs
 	}
 
+	// Get crontab
+	info.Crontab, info.CrontabError = getUserCrontab(u.Username)
+
 	return info, nil
+}
+
+func getUserCrontab(username string) (string, string) {
+	cmd := exec.Command("crontab", "-l", "-u", username)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		outputStr := strings.TrimSpace(string(output))
+		if strings.Contains(outputStr, "no crontab") {
+			return "", ""
+		}
+		return "", outputStr
+	}
+	return strings.TrimSpace(string(output)), ""
 }

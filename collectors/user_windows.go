@@ -21,6 +21,8 @@ type UserInfo struct {
 	CurrentSessions int           `json:"currentSessions"`
 	ProcessCount    int           `json:"processCount"`
 	RunningProcs    []ProcessInfo `json:"runningProcs,omitempty"`
+	Crontab         string        `json:"crontab,omitempty"`      // Scheduled tasks for user
+	CrontabError    string        `json:"crontabError,omitempty"`
 }
 
 func GetUserInfo(usernameOrUID string) (*UserInfo, error) {
@@ -90,5 +92,28 @@ func GetUserInfo(usernameOrUID string) (*UserInfo, error) {
 		info.RunningProcs = procs
 	}
 
+	// Get scheduled tasks for user
+	info.Crontab, info.CrontabError = getUserScheduledTasks(username)
+
 	return info, nil
+}
+
+func getUserScheduledTasks(username string) (string, string) {
+	// Get scheduled tasks for the user using schtasks
+	script := `Get-ScheduledTask | Where-Object { $_.Principal.UserId -like '*` + username + `*' } | ForEach-Object {
+		$info = Get-ScheduledTaskInfo $_.TaskName -ErrorAction SilentlyContinue
+		$triggers = ($_.Triggers | ForEach-Object { $_.CimClass.CimClassName }) -join ", "
+		"$($_.TaskName) | $($_.State) | $triggers | $($_.Actions.Execute)"
+	}`
+
+	output, err := runPowerShell(script)
+	if err != nil {
+		return "", "Could not retrieve scheduled tasks"
+	}
+
+	if strings.TrimSpace(output) == "" {
+		return "", "" // No scheduled tasks
+	}
+
+	return output, ""
 }
