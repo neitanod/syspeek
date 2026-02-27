@@ -3267,6 +3267,36 @@ main.maximized .row {
     cursor: pointer;
 }
 
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    transition: all 0.2s;
+}
+
+.toggle-label:hover {
+    background: var(--bg-hover);
+}
+
+.toggle-label:has(input:checked) {
+    background: var(--accent-color);
+    color: white;
+}
+
+.toggle-label input[type="checkbox"] {
+    width: 12px;
+    height: 12px;
+    cursor: pointer;
+    margin: 0;
+}
+
 .users-list-table {
     width: 100%;
     border-collapse: collapse;

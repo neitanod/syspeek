@@ -65,6 +65,7 @@ const app = createApp({
         const dockerFilter = ref('');
         const socketFilter = ref('');
         const serviceFilter = ref('');
+        const showActiveServicesOnly = ref(false);
         const sortKey = ref('cpuPercent');
         const sortAsc = ref(false);
         const serviceSortKey = ref('name');
@@ -231,6 +232,11 @@ const app = createApp({
         const filteredServices = computed(() => {
             let svcs = services.value.services || [];
             const filter = (globalSearch.value || serviceFilter.value)?.toLowerCase();
+
+            // Filter by active state if toggle is on
+            if (showActiveServicesOnly.value) {
+                svcs = svcs.filter(s => s.state === 'running' || s.state === 'active');
+            }
 
             if (filter) {
                 svcs = svcs.filter(s =>
@@ -1313,6 +1319,7 @@ const app = createApp({
             dockerFilter,
             socketFilter,
             serviceFilter,
+            showActiveServicesOnly,
             sortKey,
             serviceSortKey,
             sortAsc,

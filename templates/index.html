@@ -499,6 +499,10 @@
                         <h2>Services ({{ filteredServices.length }})</h2>
                         <span class="service-manager-badge">{{ services.manager }}</span>
                         <div class="panel-controls">
+                            <label class="toggle-label" title="Show only active services">
+                                <input type="checkbox" v-model="showActiveServicesOnly">
+                                <span>Active only</span>
+                            </label>
                             <input type="text" v-model="serviceFilter" placeholder="Filter..." class="filter-input filter-input-sm">
                             <button @click="refreshServices" class="refresh-btn" :disabled="servicesLoading" title="Refresh">
                                 {{ servicesLoading ? '...' : '↻' }}
