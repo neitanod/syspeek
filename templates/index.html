@@ -1216,92 +1216,166 @@
         <div v-if="selectedService" class="modal-overlay" @click.self="selectedService = null; serviceLogs = ''">
             <div class="modal service-detail-modal">
                 <div class="modal-header">
-                    <h2>Service: {{ selectedService.name }}</h2>
+                    <h2>{{ selectedService.name }}</h2>
                     <button @click="selectedService = null; serviceLogs = ''" class="close-btn">&times;</button>
                 </div>
                 <div class="modal-content">
                     <div v-if="serviceLoading" class="loading">Loading service information...</div>
                     <div v-else-if="selectedService.error" class="error">{{ selectedService.error }}</div>
-                    <div v-else class="detail-grid">
-                        <div class="detail-section">
-                            <h3>Basic Info</h3>
-                            <div class="detail-row"><span>Name:</span> {{ selectedService.name }}</div>
-                            <div class="detail-row" v-if="selectedService.displayName"><span>Display Name:</span> {{ selectedService.displayName }}</div>
-                            <div class="detail-row" v-if="selectedService.description"><span>Description:</span> {{ selectedService.description }}</div>
-                            <div class="detail-row">
-                                <span>State:</span>
-                                <span :class="'status-' + selectedService.state?.toLowerCase()">{{ selectedService.state }}</span>
-                                <span v-if="selectedService.subState && selectedService.subState !== selectedService.state"> ({{ selectedService.subState }})</span>
+                    <div v-else class="service-detail-content">
+                        <!-- Service Header with Status -->
+                        <div class="service-header-card">
+                            <div class="service-status-indicator" :class="'status-' + selectedService.state?.toLowerCase()">
+                                <span class="status-dot"></span>
+                                <span class="status-text">{{ selectedService.state }}</span>
+                                <span v-if="selectedService.subState && selectedService.subState !== selectedService.state" class="status-sub">({{ selectedService.subState }})</span>
                             </div>
-                            <div class="detail-row"><span>Enabled:</span> {{ selectedService.enabled ? 'Yes' : 'No' }}</div>
-                            <div class="detail-row" v-if="selectedService.pid > 0"><span>PID:</span> <span class="pid-link" @click="showProcessDetail(selectedService.pid)">{{ selectedService.pid }}</span></div>
-                            <div class="detail-row" v-if="selectedService.type"><span>Type:</span> {{ selectedService.type }}</div>
+                            <div class="service-meta">
+                                <span class="service-enabled" :class="{ enabled: selectedService.enabled }">
+                                    {{ selectedService.enabled ? 'Enabled' : 'Disabled' }}
+                                </span>
+                                <span v-if="selectedService.type" class="service-type">{{ selectedService.type }}</span>
+                            </div>
+                            <div v-if="selectedService.description" class="service-description">
+                                {{ selectedService.description }}
+                            </div>
+                            <!-- Quick Actions -->
+                            <div class="service-quick-actions" v-if="readWrite">
+                                <button v-if="selectedService.state === 'running' || selectedService.state === 'active'" @click="serviceAction(selectedService.name, 'stop')" class="btn-action btn-stop" title="Stop">
+                                    <span class="action-icon">&#9632;</span> Stop
+                                </button>
+                                <button v-if="selectedService.state !== 'running' && selectedService.state !== 'active'" @click="serviceAction(selectedService.name, 'start')" class="btn-action btn-start" title="Start">
+                                    <span class="action-icon">&#9654;</span> Start
+                                </button>
+                                <button @click="serviceAction(selectedService.name, 'restart')" class="btn-action btn-restart" title="Restart">
+                                    <span class="action-icon">&#8635;</span> Restart
+                                </button>
+                                <button v-if="!selectedService.enabled" @click="serviceAction(selectedService.name, 'enable')" class="btn-action btn-enable" title="Enable">
+                                    Enable
+                                </button>
+                                <button v-if="selectedService.enabled" @click="serviceAction(selectedService.name, 'disable')" class="btn-action btn-disable" title="Disable">
+                                    Disable
+                                </button>
+                            </div>
                         </div>
-                        <div class="detail-section">
-                            <h3>Execution</h3>
-                            <div class="detail-row" v-if="selectedService.execStart"><span>ExecStart:</span> <code>{{ selectedService.execStart }}</code></div>
-                            <div class="detail-row" v-if="selectedService.binaryPath"><span>Binary Path:</span> <code>{{ selectedService.binaryPath }}</code></div>
-                            <div class="detail-row" v-if="selectedService.execStop"><span>ExecStop:</span> <code>{{ selectedService.execStop }}</code></div>
-                            <div class="detail-row" v-if="selectedService.user"><span>User:</span> <span class="user-link" @click="showUserInfo(selectedService.user)">{{ selectedService.user }}</span></div>
-                            <div class="detail-row" v-if="selectedService.account"><span>Account:</span> {{ selectedService.account }}</div>
-                            <div class="detail-row" v-if="selectedService.group"><span>Group:</span> {{ selectedService.group }}</div>
-                            <div class="detail-row" v-if="selectedService.workingDir"><span>Working Dir:</span> <code>{{ selectedService.workingDir }}</code></div>
-                            <div class="detail-row" v-if="selectedService.restart"><span>Restart:</span> {{ selectedService.restart }}</div>
-                            <div class="detail-row" v-if="selectedService.startType"><span>Start Type:</span> {{ selectedService.startType }}</div>
+
+                        <!-- Info Cards Grid -->
+                        <div class="service-cards-grid">
+                            <!-- Runtime Info -->
+                            <div class="service-card" v-if="selectedService.pid > 0 || selectedService.startedAt || selectedService.memoryCurrent > 0">
+                                <div class="card-header">
+                                    <span class="card-icon">&#9881;</span>
+                                    <h4>Runtime</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div v-if="selectedService.pid > 0" class="info-item">
+                                        <span class="info-label">PID</span>
+                                        <span class="info-value pid-link" @click="showProcessDetail(selectedService.pid)">{{ selectedService.pid }}</span>
+                                    </div>
+                                    <div v-if="selectedService.startedAt" class="info-item">
+                                        <span class="info-label">Started</span>
+                                        <span class="info-value">{{ selectedService.startedAt }}</span>
+                                    </div>
+                                    <div v-if="selectedService.memoryCurrent > 0" class="info-item">
+                                        <span class="info-label">Memory</span>
+                                        <span class="info-value">{{ formatBytes(selectedService.memoryCurrent) }}</span>
+                                    </div>
+                                    <div v-if="selectedService.tasks > 0" class="info-item">
+                                        <span class="info-label">Tasks</span>
+                                        <span class="info-value">{{ selectedService.tasks }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Execution Info -->
+                            <div class="service-card">
+                                <div class="card-header">
+                                    <span class="card-icon">&#9654;</span>
+                                    <h4>Execution</h4>
+                                </div>
+                                <div class="card-body">
+                                    <div v-if="selectedService.execStart" class="info-item full">
+                                        <span class="info-label">Command</span>
+                                        <code class="info-code">{{ selectedService.execStart }}</code>
+                                    </div>
+                                    <div v-if="selectedService.binaryPath" class="info-item full">
+                                        <span class="info-label">Binary</span>
+                                        <code class="info-code">{{ selectedService.binaryPath }}</code>
+                                    </div>
+                                    <div v-if="selectedService.user" class="info-item">
+                                        <span class="info-label">User</span>
+                                        <span class="info-value user-link" @click="showUserInfo(selectedService.user)">{{ selectedService.user }}</span>
+                                    </div>
+                                    <div v-if="selectedService.account" class="info-item">
+                                        <span class="info-label">Account</span>
+                                        <span class="info-value">{{ selectedService.account }}</span>
+                                    </div>
+                                    <div v-if="selectedService.group" class="info-item">
+                                        <span class="info-label">Group</span>
+                                        <span class="info-value">{{ selectedService.group }}</span>
+                                    </div>
+                                    <div v-if="selectedService.workingDir" class="info-item full">
+                                        <span class="info-label">Working Dir</span>
+                                        <code class="info-code">{{ selectedService.workingDir }}</code>
+                                    </div>
+                                    <div v-if="selectedService.restart" class="info-item">
+                                        <span class="info-label">Restart Policy</span>
+                                        <span class="info-value">{{ selectedService.restart }}</span>
+                                    </div>
+                                    <div v-if="selectedService.startType" class="info-item">
+                                        <span class="info-label">Start Type</span>
+                                        <span class="info-value">{{ selectedService.startType }}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="detail-section" v-if="selectedService.memoryCurrent > 0 || selectedService.tasks > 0 || selectedService.startedAt">
-                            <h3>Resources</h3>
-                            <div class="detail-row" v-if="selectedService.startedAt"><span>Started At:</span> {{ selectedService.startedAt }}</div>
-                            <div class="detail-row" v-if="selectedService.memoryCurrent > 0"><span>Memory:</span> {{ formatBytes(selectedService.memoryCurrent) }}</div>
-                            <div class="detail-row" v-if="selectedService.tasks > 0"><span>Tasks:</span> {{ selectedService.tasks }}</div>
-                        </div>
-                        <div class="detail-section full-width" v-if="selectedService.dependencies?.length > 0">
-                            <h3>Dependencies</h3>
+
+                        <!-- Dependencies -->
+                        <div class="service-section" v-if="selectedService.dependencies?.length > 0">
+                            <h4><span class="section-icon">&#128279;</span> Dependencies</h4>
                             <div class="deps-list">
                                 <span v-for="dep in selectedService.dependencies" :key="dep" class="dep-tag" @click="showServiceDetail(dep)">{{ dep }}</span>
                             </div>
                         </div>
-                        <div class="detail-section full-width" v-if="selectedService.environment?.length > 0">
-                            <h3>Environment</h3>
-                            <div class="env-list">
-                                <div v-for="e in selectedService.environment" :key="e" class="env-item">
-                                    <code>{{ e }}</code>
-                                </div>
+
+                        <!-- Environment -->
+                        <div class="service-section" v-if="selectedService.environment?.length > 0">
+                            <h4><span class="section-icon">&#9881;</span> Environment Variables</h4>
+                            <div class="env-grid">
+                                <code v-for="e in selectedService.environment" :key="e" class="env-item">{{ e }}</code>
                             </div>
                         </div>
-                        <div class="detail-section full-width" v-if="selectedService.unitFile">
-                            <h3>Unit File</h3>
-                            <div class="detail-row"><span>Path:</span> <code>{{ selectedService.unitFile }}</code></div>
+
+                        <!-- Unit File -->
+                        <div class="service-section" v-if="selectedService.unitFile">
+                            <h4><span class="section-icon">&#128196;</span> Unit File</h4>
+                            <div class="unit-file-path">
+                                <code>{{ selectedService.unitFile }}</code>
+                            </div>
                             <div v-if="selectedService.unitContent" class="unit-content">
                                 <pre>{{ selectedService.unitContent }}</pre>
                             </div>
                         </div>
-                        <!-- Service Logs -->
-                        <div class="detail-section full-width">
-                            <h3>
-                                Logs
-                                <button class="refresh-btn" @click="fetchServiceLogs(selectedService.name)" :disabled="serviceLogsLoading" title="Load logs">
+
+                        <!-- Logs -->
+                        <div class="service-section service-logs-section">
+                            <h4>
+                                <span class="section-icon">&#128203;</span> Logs
+                                <button class="refresh-btn-sm" @click="fetchServiceLogs(selectedService.name)" :disabled="serviceLogsLoading" title="Load logs">
                                     {{ serviceLogsLoading ? '...' : '↻' }}
                                 </button>
-                                <span v-if="serviceLogs" class="logs-info">(last {{ serviceLogLines }} lines)</span>
-                            </h3>
-                            <div v-if="!serviceLogs && !serviceLogsLoading" class="no-data">
-                                Click refresh to load logs
+                                <span v-if="serviceLogs" class="logs-info">({{ serviceLogLines }} lines)</span>
+                            </h4>
+                            <div v-if="!serviceLogs && !serviceLogsLoading" class="logs-placeholder">
+                                Click refresh to load service logs
                             </div>
                             <div v-else class="logs-container">
                                 <pre class="logs-content">{{ serviceLogs }}</pre>
-                                <button v-if="serviceLogs" @click="loadMoreServiceLogs(selectedService.name)" class="btn-secondary load-more-btn" :disabled="serviceLogsLoading">
-                                    Load More ({{ serviceLogLines * 2 }} lines)
+                                <button v-if="serviceLogs" @click="loadMoreServiceLogs(selectedService.name)" class="btn-load-more" :disabled="serviceLogsLoading">
+                                    Load More
                                 </button>
                             </div>
                         </div>
-                    </div>
-                    <div class="modal-actions" v-if="readWrite && selectedService.name && !serviceLoading && !selectedService.error">
-                        <button v-if="selectedService.state === 'running' || selectedService.state === 'active'" @click="serviceAction(selectedService.name, 'stop')" class="btn-warning">Stop</button>
-                        <button v-if="selectedService.state !== 'running' && selectedService.state !== 'active'" @click="serviceAction(selectedService.name, 'start')" class="btn-success">Start</button>
-                        <button @click="serviceAction(selectedService.name, 'restart')" class="btn-primary">Restart</button>
-                        <button v-if="!selectedService.enabled" @click="serviceAction(selectedService.name, 'enable')" class="btn-secondary">Enable</button>
-                        <button v-if="selectedService.enabled" @click="serviceAction(selectedService.name, 'disable')" class="btn-secondary">Disable</button>
                     </div>
                 </div>
             </div>

@@ -1411,6 +1411,32 @@ main.compact .docker-table .status-icon-cell {
     padding: 4px 4px !important;
 }
 
+main.compact .service-table th,
+main.compact .service-table td {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+main.compact .service-table .status-icon-cell {
+    padding: 4px 4px !important;
+}
+
+main.compact .service-table .service-desc {
+    max-width: 200px;
+}
+
+main.compact .sessions-table th,
+main.compact .sessions-table td {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+main.compact .users-list-table th,
+main.compact .users-list-table td {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
 main.compact .tabs {
     gap: 4px;
     margin-bottom: 8px;
@@ -2633,8 +2659,12 @@ main.maximized .row {
 
 /* Services Panel */
 .services-panel {
-    max-height: 400px;
-    overflow: auto;
+    grid-column: 1 / -1;
+}
+
+.services-row {
+    display: flex;
+    gap: 20px;
 }
 
 .service-manager-badge {
@@ -2643,7 +2673,7 @@ main.maximized .row {
     padding: 3px 8px;
     border-radius: var(--radius-sm);
     color: var(--text-muted);
-    margin-left: 8px;
+    margin-left: 10px;
 }
 
 .service-table {
@@ -2706,25 +2736,298 @@ main.maximized .row {
     max-width: 900px;
 }
 
-.service-detail-modal .unit-content {
-    margin-top: 10px;
+.service-detail-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
-.service-detail-modal .unit-content pre {
-    background: var(--bg-primary);
+/* Service Header Card */
+.service-header-card {
+    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 12px;
-    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
-    font-size: 12px;
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+.service-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.service-status-indicator .status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    box-shadow: 0 0 8px currentColor;
+}
+
+.service-status-indicator.status-running .status-dot,
+.service-status-indicator.status-active .status-dot {
+    background: var(--success-color);
+    box-shadow: 0 0 8px var(--success-color);
+}
+
+.service-status-indicator.status-stopped .status-dot,
+.service-status-indicator.status-inactive .status-dot,
+.service-status-indicator.status-dead .status-dot {
+    background: var(--text-muted);
+    box-shadow: none;
+}
+
+.service-status-indicator.status-failed .status-dot {
+    background: var(--danger-color);
+    box-shadow: 0 0 8px var(--danger-color);
+}
+
+.service-status-indicator .status-text {
+    font-size: 16px;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.service-status-indicator.status-running .status-text,
+.service-status-indicator.status-active .status-text {
+    color: var(--success-color);
+}
+
+.service-status-indicator.status-failed .status-text {
+    color: var(--danger-color);
+}
+
+.service-status-indicator .status-sub {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.service-meta {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.service-enabled {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger-color);
+}
+
+.service-enabled.enabled {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--success-color);
+}
+
+.service-type {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    background: var(--bg-hover);
+    color: var(--text-muted);
+}
+
+.service-description {
+    color: var(--text-secondary);
+    font-size: 14px;
     line-height: 1.5;
-    max-height: 300px;
-    overflow: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
+    margin-bottom: 12px;
+}
+
+.service-quick-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.btn-action {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-action .action-icon {
+    font-size: 10px;
+}
+
+.btn-action.btn-stop {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--danger-color);
+}
+
+.btn-action.btn-stop:hover {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+.btn-action.btn-start {
+    background: rgba(34, 197, 94, 0.15);
+    color: var(--success-color);
+}
+
+.btn-action.btn-start:hover {
+    background: rgba(34, 197, 94, 0.25);
+}
+
+.btn-action.btn-restart {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--accent-color);
+}
+
+.btn-action.btn-restart:hover {
+    background: rgba(59, 130, 246, 0.25);
+}
+
+.btn-action.btn-enable,
+.btn-action.btn-disable {
+    background: var(--bg-hover);
     color: var(--text-secondary);
 }
 
+.btn-action.btn-enable:hover,
+.btn-action.btn-disable:hover {
+    background: var(--bg-tertiary);
+}
+
+/* Service Cards Grid */
+.service-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 12px;
+}
+
+.service-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.service-card .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--bg-hover);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.service-card .card-header .card-icon {
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.service-card .card-header h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.service-card .card-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.service-card .info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.service-card .info-item.full {
+    flex-direction: column;
+    gap: 4px;
+}
+
+.service-card .info-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+}
+
+.service-card .info-value {
+    font-size: 13px;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+.service-card .info-item.full .info-value {
+    text-align: left;
+}
+
+.service-card .info-code {
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 11px;
+    background: var(--bg-primary);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    word-break: break-all;
+    display: block;
+}
+
+/* Service Sections */
+.service-section {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px;
+}
+
+.service-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.service-section .section-icon {
+    opacity: 0.6;
+}
+
+.service-section .refresh-btn-sm {
+    margin-left: auto;
+    padding: 4px 10px;
+    font-size: 12px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.service-section .refresh-btn-sm:hover {
+    background: var(--bg-tertiary);
+}
+
+.service-section .logs-info {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
+/* Dependencies */
 .deps-list {
     display: flex;
     flex-wrap: wrap;
@@ -2732,17 +3035,119 @@ main.maximized .row {
 }
 
 .dep-tag {
-    padding: 4px 10px;
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-sm);
+    padding: 5px 12px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
     font-size: 12px;
     color: var(--accent-color);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.dep-tag:hover {
+    background: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
+}
+
+/* Environment Grid */
+.env-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.env-grid .env-item {
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 11px;
+    background: var(--bg-primary);
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    word-break: break-all;
+}
+
+/* Unit File */
+.unit-file-path {
+    margin-bottom: 10px;
+}
+
+.unit-file-path code {
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 12px;
+    color: var(--accent-color);
+}
+
+.unit-content pre {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* Logs Section */
+.logs-placeholder {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-muted);
+    background: var(--bg-primary);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+}
+
+.service-logs-section .logs-container {
+    position: relative;
+}
+
+.service-logs-section .logs-content {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.btn-load-more {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 12px;
     cursor: pointer;
     transition: background 0.2s;
 }
 
-.dep-tag:hover {
-    background: var(--bg-hover);
+.btn-load-more:hover {
+    background: var(--bg-tertiary);
+}
+
+.btn-load-more:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Crontab section */
@@ -2914,4 +3319,173 @@ main.maximized .row {
 .users-list-modal .modal-content {
     max-height: 70vh;
     overflow-y: auto;
+}
+
+/* Mobile responsive tables - stack cells vertically */
+@media (max-width: 768px) {
+    /* Hide table headers on mobile */
+    .process-table thead,
+    .docker-table thead,
+    .service-table thead,
+    .sessions-table thead,
+    .socket-table thead,
+    .firewall-table thead,
+    .users-list-table thead {
+        display: none;
+    }
+
+    /* Make table rows stack */
+    .process-table,
+    .docker-table,
+    .service-table,
+    .sessions-table,
+    .socket-table,
+    .firewall-table,
+    .users-list-table {
+        display: block;
+    }
+
+    .process-table tbody,
+    .docker-table tbody,
+    .service-table tbody,
+    .sessions-table tbody,
+    .socket-table tbody,
+    .firewall-table tbody,
+    .users-list-table tbody {
+        display: block;
+    }
+
+    .process-table tr,
+    .docker-table tr,
+    .service-table tr,
+    .sessions-table tr,
+    .socket-table tr,
+    .firewall-table tr,
+    .users-list-table tr {
+        display: block;
+        padding: 10px;
+        margin-bottom: 8px;
+        background: var(--bg-tertiary);
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border-color);
+    }
+
+    .process-table td,
+    .docker-table td,
+    .service-table td,
+    .sessions-table td,
+    .socket-table td,
+    .firewall-table td,
+    .users-list-table td {
+        display: block;
+        padding: 4px 0;
+        border: none;
+        text-align: left;
+    }
+
+    /* Add labels before cell content */
+    .process-table td::before,
+    .docker-table td::before,
+    .service-table td::before,
+    .sessions-table td::before,
+    .socket-table td::before,
+    .firewall-table td::before,
+    .users-list-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        font-size: 10px;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-right: 8px;
+    }
+
+    /* Process table mobile labels */
+    .process-table td:nth-child(1)::before { content: "PID: "; }
+    .process-table td:nth-child(2)::before { content: "Name: "; }
+    .process-table td:nth-child(3)::before { content: "User: "; }
+    .process-table td:nth-child(4)::before { content: "CPU: "; }
+    .process-table td:nth-child(5)::before { content: "Mem%: "; }
+    .process-table td:nth-child(6)::before { content: "Memory: "; }
+    .process-table td:nth-child(7)::before { content: "Threads: "; }
+    .process-table td:nth-child(8)::before { content: "Cmd: "; }
+    .process-table td:nth-child(9)::before { content: ""; }
+
+    /* Docker table mobile labels */
+    .docker-table td:nth-child(1)::before { content: ""; }
+    .docker-table td:nth-child(2)::before { content: "Name: "; }
+    .docker-table td:nth-child(3)::before { content: "Image: "; }
+    .docker-table td:nth-child(4)::before { content: "Status: "; }
+    .docker-table td:nth-child(5)::before { content: "Ports: "; }
+    .docker-table td:nth-child(6)::before { content: ""; }
+
+    /* Service table mobile labels */
+    .service-table td:nth-child(1)::before { content: ""; }
+    .service-table td:nth-child(2)::before { content: "Name: "; }
+    .service-table td:nth-child(3)::before { content: "Desc: "; }
+    .service-table td:nth-child(4)::before { content: "State: "; }
+    .service-table td:nth-child(5)::before { content: "PID: "; }
+    .service-table td:nth-child(6)::before { content: ""; }
+
+    /* Sessions table mobile labels */
+    .sessions-table td:nth-child(1)::before { content: "User: "; }
+    .sessions-table td:nth-child(2)::before { content: "Terminal: "; }
+    .sessions-table td:nth-child(3)::before { content: "Host: "; }
+    .sessions-table td:nth-child(4)::before { content: "Login: "; }
+    .sessions-table td:nth-child(5)::before { content: "Idle: "; }
+
+    /* Socket table mobile labels */
+    .socket-table td:nth-child(1)::before { content: "Proto: "; }
+    .socket-table td:nth-child(2)::before { content: "Local: "; }
+    .socket-table td:nth-child(3)::before { content: "Remote: "; }
+    .socket-table td:nth-child(4)::before { content: "State: "; }
+    .socket-table td:nth-child(5)::before { content: "Process: "; }
+
+    /* Firewall table mobile labels */
+    .firewall-table td:nth-child(1)::before { content: "Chain: "; }
+    .firewall-table td:nth-child(2)::before { content: "Proto: "; }
+    .firewall-table td:nth-child(3)::before { content: "Port: "; }
+    .firewall-table td:nth-child(4)::before { content: "Action: "; }
+
+    /* Users list table mobile labels */
+    .users-list-table td:nth-child(1)::before { content: "User: "; }
+    .users-list-table td:nth-child(2)::before { content: "UID: "; }
+    .users-list-table td:nth-child(3)::before { content: "GID: "; }
+    .users-list-table td:nth-child(4)::before { content: "Name: "; }
+    .users-list-table td:nth-child(5)::before { content: "Home: "; }
+    .users-list-table td:nth-child(6)::before { content: "Shell: "; }
+
+    /* Hide less important columns on mobile */
+    .process-table td:nth-child(7),
+    .process-table td:nth-child(8) {
+        display: none;
+    }
+
+    /* Status icon inline on mobile */
+    .status-icon-cell {
+        display: inline-block !important;
+        padding: 0 !important;
+        margin-right: 8px;
+    }
+
+    /* Action buttons full width */
+    .process-table td:last-child,
+    .docker-table td:last-child,
+    .service-table td:last-child {
+        margin-top: 8px;
+    }
+
+    /* Path cells wrap on mobile */
+    .users-list-table .path-cell {
+        max-width: none;
+        white-space: normal;
+        word-break: break-all;
+    }
+
+    /* Command cells wrap on mobile */
+    .process-table .command,
+    .service-table .service-desc {
+        max-width: none;
+        white-space: normal;
+        word-break: break-word;
+    }
 }
