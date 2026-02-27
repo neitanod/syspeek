@@ -126,7 +126,7 @@
                                 {{ paused.cpu ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('cpu')" :title="maximizedPanel === 'cpu' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'cpu' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'cpu' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -200,7 +200,7 @@
                                 {{ paused.memory ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('memory')" :title="maximizedPanel === 'memory' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'memory' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'memory' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -292,7 +292,7 @@
                                 {{ paused.gpu ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('gpu')" :title="maximizedPanel === 'gpu' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'gpu' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'gpu' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -346,7 +346,7 @@
                                 {{ paused.disk ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('disk')" :title="maximizedPanel === 'disk' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'disk' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'disk' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -388,7 +388,7 @@
                                 {{ paused.processes ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('processes')" :title="maximizedPanel === 'processes' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'processes' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'processes' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -435,7 +435,7 @@
                                 {{ paused.network ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('network')" :title="maximizedPanel === 'network' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'network' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'network' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -477,7 +477,7 @@
                                 {{ paused.docker ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('docker')" :title="maximizedPanel === 'docker' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'docker' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'docker' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -531,7 +531,7 @@
                                 {{ servicesLoading ? '...' : '↻' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('services')" :title="maximizedPanel === 'services' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'services' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'services' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -582,7 +582,7 @@
                                 {{ sessionsLoading ? '...' : '↻' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('sessions')" :title="maximizedPanel === 'sessions' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'sessions' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'sessions' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -628,7 +628,7 @@
                                 {{ paused.sockets ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('sockets')" :title="maximizedPanel === 'sockets' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'sockets' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'sockets' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
@@ -672,7 +672,7 @@
                                 {{ paused.firewall ? '▶' : '❚❚' }}
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('firewall')" :title="maximizedPanel === 'firewall' ? 'Restore' : 'Maximize'">
-                                {{ maximizedPanel === 'firewall' ? '🗗' : '🗖' }}
+                                <img :src="maximizedPanel === 'firewall' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
                             </button>
                         </div>
                     </div>
