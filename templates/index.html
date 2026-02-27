@@ -21,7 +21,7 @@
             </div>
         </div>
 
-        <header v-show="!maximizedPanel" :style="theme === 'dark' ? { background: config.ui?.headerColor || 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)' } : {}">
+        <header v-show="!maximizedPanel">
             <div class="header-left">
                 <h1>{{ config.ui?.title || 'Syspeek' }}</h1>
                 <span class="uptime" v-if="cpu.uptime">up {{ cpu.uptime }}</span>
@@ -35,7 +35,7 @@
             </div>
             <div class="header-right">
                 <button @click="togglePauseAll" :class="{ active: pausedAll }" :title="pausedAll ? 'Resume all' : 'Pause all'">
-                    {{ pausedAll ? '▶' : '❚❚' }}
+                    <img :src="pausedAll ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg">
                 </button>
                 <template v-if="authenticated">
                     <span v-if="readWrite" class="admin-badge">Admin</span>
@@ -49,7 +49,7 @@
                 <!-- Settings Menu -->
                 <div class="settings-menu-wrapper">
                     <button @click.stop="showSettingsMenu = !showSettingsMenu" class="settings-btn" title="Settings">
-                        &#9881;
+                        <img src="/static/icons/cog.svg" class="icon-svg">
                     </button>
                     <div v-if="showSettingsMenu" class="settings-dropdown" @click.stop>
                         <div class="settings-section">
@@ -58,11 +58,11 @@
                                 <span>Compact mode</span>
                             </div>
                             <div class="settings-item" @click="toggleTheme">
-                                <span class="settings-icon">{{ theme === 'dark' ? '☀' : '☾' }}</span>
+                                <img :src="theme === 'dark' ? '/static/icons/sun.svg' : '/static/icons/moon.svg'" class="icon-svg-sm">
                                 <span>{{ theme === 'dark' ? 'Light theme' : 'Dark theme' }}</span>
                             </div>
                             <div v-if="authenticated" class="settings-item" @click="logout">
-                                <span class="settings-icon">&#8594;</span>
+                                <img src="/static/icons/logout.svg" class="icon-svg-sm">
                                 <span>Logout</span>
                             </div>
                         </div>
@@ -123,7 +123,7 @@
                                 </div>
                             </div>
                             <button @click="paused.cpu = !paused.cpu" class="pause-btn" :class="{ active: paused.cpu }">
-                                {{ paused.cpu ? '▶' : '❚❚' }}
+                                <img :src="paused.cpu ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('cpu')" :title="maximizedPanel === 'cpu' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'cpu' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -197,7 +197,7 @@
                                 </div>
                             </div>
                             <button @click="paused.memory = !paused.memory" class="pause-btn" :class="{ active: paused.memory }">
-                                {{ paused.memory ? '▶' : '❚❚' }}
+                                <img :src="paused.memory ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('memory')" :title="maximizedPanel === 'memory' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'memory' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -289,7 +289,7 @@
                                 </div>
                             </div>
                             <button @click="paused.gpu = !paused.gpu" class="pause-btn" :class="{ active: paused.gpu }">
-                                {{ paused.gpu ? '▶' : '❚❚' }}
+                                <img :src="paused.gpu ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('gpu')" :title="maximizedPanel === 'gpu' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'gpu' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -343,7 +343,7 @@
                                 </div>
                             </div>
                             <button @click="paused.disk = !paused.disk" class="pause-btn" :class="{ active: paused.disk }">
-                                {{ paused.disk ? '▶' : '❚❚' }}
+                                <img :src="paused.disk ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('disk')" :title="maximizedPanel === 'disk' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'disk' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -385,7 +385,7 @@
                         <div class="process-controls">
                             <input type="text" v-model="processFilter" placeholder="Filter..." class="filter-input">
                             <button @click="paused.processes = !paused.processes" class="pause-btn" :class="{ active: paused.processes }">
-                                {{ paused.processes ? '▶' : '❚❚' }}
+                                <img :src="paused.processes ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('processes')" :title="maximizedPanel === 'processes' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'processes' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -432,7 +432,7 @@
                         <h2>Network</h2>
                         <div class="panel-controls">
                             <button @click="paused.network = !paused.network" class="pause-btn" :class="{ active: paused.network }">
-                                {{ paused.network ? '▶' : '❚❚' }}
+                                <img :src="paused.network ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('network')" :title="maximizedPanel === 'network' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'network' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -474,7 +474,7 @@
                         <h2>Docker ({{ docker.containers?.length || 0 }})</h2>
                         <div class="panel-controls">
                             <button @click="paused.docker = !paused.docker" class="pause-btn" :class="{ active: paused.docker }">
-                                {{ paused.docker ? '▶' : '❚❚' }}
+                                <img :src="paused.docker ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('docker')" :title="maximizedPanel === 'docker' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'docker' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -528,7 +528,8 @@
                             </label>
                             <input type="text" v-model="serviceFilter" placeholder="Filter..." class="filter-input filter-input-sm">
                             <button @click="refreshServices" class="refresh-btn" :disabled="servicesLoading" title="Refresh">
-                                {{ servicesLoading ? '...' : '↻' }}
+                                <img v-if="!servicesLoading" src="/static/icons/refresh.svg" class="icon-svg-sm">
+                                <span v-else>...</span>
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('services')" :title="maximizedPanel === 'services' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'services' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -579,7 +580,8 @@
                                 All Users
                             </button>
                             <button @click="refreshSessions" class="refresh-btn" :disabled="sessionsLoading" title="Refresh">
-                                {{ sessionsLoading ? '...' : '↻' }}
+                                <img v-if="!sessionsLoading" src="/static/icons/refresh.svg" class="icon-svg-sm">
+                                <span v-else>...</span>
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('sessions')" :title="maximizedPanel === 'sessions' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'sessions' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -625,7 +627,7 @@
                         </div>
                         <div class="panel-controls">
                             <button @click="paused.sockets = !paused.sockets" class="pause-btn" :class="{ active: paused.sockets }">
-                                {{ paused.sockets ? '▶' : '❚❚' }}
+                                <img :src="paused.sockets ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('sockets')" :title="maximizedPanel === 'sockets' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'sockets' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -669,7 +671,7 @@
                         </span>
                         <div class="panel-controls">
                             <button @click="paused.firewall = !paused.firewall" class="pause-btn" :class="{ active: paused.firewall }">
-                                {{ paused.firewall ? '▶' : '❚❚' }}
+                                <img :src="paused.firewall ? '/static/icons/play.svg' : '/static/icons/pause.svg'" class="icon-svg-sm">
                             </button>
                             <button class="maximize-btn" @click="toggleMaximize('firewall')" :title="maximizedPanel === 'firewall' ? 'Restore' : 'Maximize'">
                                 <img :src="maximizedPanel === 'firewall' ? '/static/icons/window-restore.svg' : '/static/icons/window-maximize.svg'" class="icon-svg">
@@ -869,7 +871,8 @@
                             <h3>
                                 Processes
                                 <button class="refresh-btn" @click="fetchContainerTop(selectedContainer.id)" :disabled="containerTopLoading" title="Refresh">
-                                    {{ containerTopLoading ? '...' : '↻' }}
+                                    <img v-if="!containerTopLoading" src="/static/icons/refresh.svg" class="icon-svg-sm">
+                                    <span v-else>...</span>
                                 </button>
                             </h3>
                             <div v-if="containerTop.length === 0 && !containerTopLoading" class="no-data">
@@ -895,7 +898,8 @@
                             <h3>
                                 Logs
                                 <button class="refresh-btn" @click="fetchContainerLogs(selectedContainer.id)" :disabled="containerLogsLoading" title="Load logs">
-                                    {{ containerLogsLoading ? '...' : '↻' }}
+                                    <img v-if="!containerLogsLoading" src="/static/icons/refresh.svg" class="icon-svg-sm">
+                                    <span v-else>...</span>
                                 </button>
                                 <span v-if="containerLogs" class="logs-info">(last {{ containerLogsTail }} lines)</span>
                             </h3>
@@ -1389,7 +1393,8 @@
                             <h4>
                                 <span class="section-icon">&#128203;</span> Logs
                                 <button class="refresh-btn-sm" @click="fetchServiceLogs(selectedService.name)" :disabled="serviceLogsLoading" title="Load logs">
-                                    {{ serviceLogsLoading ? '...' : '↻' }}
+                                    <img v-if="!serviceLogsLoading" src="/static/icons/refresh.svg" class="icon-svg-sm">
+                                    <span v-else>...</span>
                                 </button>
                                 <span v-if="serviceLogs" class="logs-info">({{ serviceLogLines }} lines)</span>
                             </h4>

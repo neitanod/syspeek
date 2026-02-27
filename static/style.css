@@ -2568,6 +2568,58 @@ main.compact .gpu-stats {
     vertical-align: middle;
 }
 
+/* SVG Icons */
+.icon-svg {
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+}
+
+.icon-svg-sm {
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}
+
+/* Dark theme (default) - white icons */
+.icon-svg,
+.icon-svg-sm {
+    filter: invert(1) brightness(2);
+}
+
+/* Light theme - dark icons */
+[data-theme="light"] .icon-svg,
+[data-theme="light"] .icon-svg-sm {
+    filter: invert(0) brightness(0.3);
+}
+
+/* Settings menu items - icons should match text */
+.settings-item .icon-svg-sm {
+    width: 16px;
+    height: 16px;
+}
+
+/* Pause button active state - dark icon on yellow background */
+.pause-btn.active .icon-svg-sm {
+    filter: invert(0) brightness(0);
+}
+
+/* Header pause all button active - keep white */
+.header-right button.active .icon-svg {
+    filter: invert(1) brightness(2);
+}
+
+/* Refresh button icons */
+.refresh-btn .icon-svg-sm {
+    width: 14px;
+    height: 14px;
+}
+
+.refresh-btn-sm .icon-svg-sm {
+    width: 12px;
+    height: 12px;
+}
+
 /* Main in maximized mode */
 main.maximized {
     padding: 0;
