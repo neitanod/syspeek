@@ -542,6 +542,51 @@
                 </section>
             </div>
 
+            <!-- Sessions row -->
+            <div class="row sessions-row">
+                <section class="panel sessions-panel" v-show="!maximizedPanel || maximizedPanel === 'sessions'" :class="{ 'panel-maximized': maximizedPanel === 'sessions' }">
+                    <div class="panel-header">
+                        <h2>Active Sessions ({{ sessions.total || 0 }})</h2>
+                        <div class="panel-controls">
+                            <button @click="showUsersListModal = true" class="btn-secondary" title="View all users">
+                                All Users
+                            </button>
+                            <button @click="refreshSessions" class="refresh-btn" :disabled="sessionsLoading" title="Refresh">
+                                {{ sessionsLoading ? '...' : '↻' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('sessions')" :title="maximizedPanel === 'sessions' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'sessions' ? '🗗' : '🗖' }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-content">
+                        <table class="sessions-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Terminal</th>
+                                    <th>Host</th>
+                                    <th>Login Time</th>
+                                    <th>Idle</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="session in sessions.sessions" :key="session.user + session.terminal">
+                                    <td><span class="user-link" @click="showUserInfo(session.user)">{{ session.user }}</span></td>
+                                    <td>{{ session.terminal }}</td>
+                                    <td>{{ session.host || '-' }}</td>
+                                    <td>{{ session.login }}</td>
+                                    <td>{{ session.idle || '-' }}</td>
+                                </tr>
+                                <tr v-if="!sessions.sessions || sessions.sessions.length === 0">
+                                    <td colspan="5" class="no-data">No active sessions</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
             <!-- Bottom row: Sockets, Firewall -->
             <div class="row bottom-row">
                 <section class="panel sockets-panel" v-show="!maximizedPanel || maximizedPanel === 'sockets'" :class="{ 'panel-maximized': maximizedPanel === 'sockets' }">
@@ -1115,6 +1160,53 @@
                             </div>
                         </div>
                         <div v-else class="no-data">No members in this group</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users List Modal -->
+        <div v-if="showUsersListModal" class="modal-overlay" @click.self="showUsersListModal = false">
+            <div class="modal users-list-modal">
+                <div class="modal-header">
+                    <h2>System Users ({{ usersList.total || 0 }})</h2>
+                    <div class="users-filter-controls">
+                        <label class="checkbox-label">
+                            <input type="checkbox" v-model="showSystemUsers">
+                            Show system users
+                        </label>
+                        <input type="text" v-model="usersFilter" placeholder="Filter users..." class="filter-input">
+                    </div>
+                    <button @click="showUsersListModal = false" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-content">
+                    <div v-if="usersListLoading" class="loading">Loading users...</div>
+                    <div v-else>
+                        <table class="users-list-table">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>UID</th>
+                                    <th>GID</th>
+                                    <th>Full Name</th>
+                                    <th>Home</th>
+                                    <th>Shell</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="user in filteredUsersList" :key="user.username" @click="showUserInfo(user.username); showUsersListModal = false" class="clickable">
+                                    <td><span class="user-link">{{ user.username }}</span></td>
+                                    <td>{{ user.uid }}</td>
+                                    <td>{{ user.gid }}</td>
+                                    <td>{{ user.gecos || '-' }}</td>
+                                    <td class="path-cell"><code>{{ user.homeDir }}</code></td>
+                                    <td class="path-cell"><code>{{ user.shell }}</code></td>
+                                </tr>
+                                <tr v-if="filteredUsersList.length === 0">
+                                    <td colspan="6" class="no-data">No users found</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

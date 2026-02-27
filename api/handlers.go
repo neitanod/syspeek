@@ -928,3 +928,23 @@ func (a *API) HandleServiceLogs(w http.ResponseWriter, r *http.Request) {
 		"lines": lines,
 	})
 }
+
+// Sessions handlers
+func (a *API) HandleSessions(w http.ResponseWriter, r *http.Request) {
+	info, err := collectors.GetSessions()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// Users list handler
+func (a *API) HandleUsersList(w http.ResponseWriter, r *http.Request) {
+	info, err := collectors.GetUsersList()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}

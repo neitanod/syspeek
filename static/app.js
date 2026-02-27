@@ -28,6 +28,15 @@ const app = createApp({
         const firewall = ref({});
         const docker = ref({ containers: [], available: false });
         const services = ref({ services: [], available: false, manager: '' });
+        const sessions = ref({ sessions: [], total: 0 });
+        const sessionsLoading = ref(false);
+
+        // Users list
+        const usersList = ref({ users: [], total: 0 });
+        const usersListLoading = ref(false);
+        const showUsersListModal = ref(false);
+        const showSystemUsers = ref(false);
+        const usersFilter = ref('');
 
         // Global search
         const globalSearch = ref('');
@@ -253,6 +262,28 @@ const app = createApp({
                 serviceSortAsc.value = true;
             }
         };
+
+        const filteredUsersList = computed(() => {
+            let users = usersList.value.users || [];
+
+            // Filter system users
+            if (!showSystemUsers.value) {
+                users = users.filter(u => !u.isSystem);
+            }
+
+            // Filter by search
+            const filter = usersFilter.value?.toLowerCase();
+            if (filter) {
+                users = users.filter(u =>
+                    u.username?.toLowerCase().includes(filter) ||
+                    u.gecos?.toLowerCase().includes(filter) ||
+                    u.homeDir?.toLowerCase().includes(filter) ||
+                    String(u.uid).includes(filter)
+                );
+            }
+
+            return users;
+        });
 
         const hasSearchResults = computed(() => {
             if (!globalSearch.value) return true;
@@ -906,6 +937,43 @@ const app = createApp({
             await fetchServiceLogs(serviceName, newLines);
         };
 
+        // Sessions functions
+        const refreshSessions = async () => {
+            sessionsLoading.value = true;
+            try {
+                const res = await fetch('/api/sessions');
+                if (res.ok) {
+                    sessions.value = await res.json();
+                }
+            } catch (e) {
+                console.error('Failed to refresh sessions:', e);
+            } finally {
+                sessionsLoading.value = false;
+            }
+        };
+
+        // Users list functions
+        const refreshUsersList = async () => {
+            usersListLoading.value = true;
+            try {
+                const res = await fetch('/api/users');
+                if (res.ok) {
+                    usersList.value = await res.json();
+                }
+            } catch (e) {
+                console.error('Failed to refresh users list:', e);
+            } finally {
+                usersListLoading.value = false;
+            }
+        };
+
+        // Watch for users list modal open
+        watch(showUsersListModal, (newVal) => {
+            if (newVal && usersList.value.users.length === 0) {
+                refreshUsersList();
+            }
+        });
+
         // Alert system functions
         const requestNotificationPermission = async () => {
             if (!('Notification' in window)) {
@@ -1179,6 +1247,9 @@ const app = createApp({
             // Fetch services once at startup (not auto-refresh)
             refreshServices();
 
+            // Fetch sessions once at startup
+            refreshSessions();
+
             connectSSE();
         });
 
@@ -1223,6 +1294,15 @@ const app = createApp({
             firewall,
             docker,
             services,
+            sessions,
+            sessionsLoading,
+
+            // Users list
+            usersList,
+            usersListLoading,
+            showUsersListModal,
+            showSystemUsers,
+            usersFilter,
 
             // UI state
             paused,
@@ -1286,6 +1366,7 @@ const app = createApp({
             filteredContainers,
             filteredInterfaces,
             filteredServices,
+            filteredUsersList,
             hasSearchResults,
             currentSockets,
 
@@ -1343,7 +1424,13 @@ const app = createApp({
             serviceAction,
             fetchServiceLogs,
             loadMoreServiceLogs,
-            sortServicesBy
+            sortServicesBy,
+
+            // Sessions
+            refreshSessions,
+
+            // Users list
+            refreshUsersList
         };
     }
 });

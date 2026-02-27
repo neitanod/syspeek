@@ -29,7 +29,7 @@ import (
 
 const (
 	maxPortRetries = 50
-	Version        = "1.2.0"
+	Version        = "1.3.0"
 )
 
 //go:embed static templates

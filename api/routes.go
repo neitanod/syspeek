@@ -127,4 +127,10 @@ func (a *API) SetupRoutes(mux *http.ServeMux, authMgr *auth.AuthManager) {
 			authMgr.Middleware(a.HandleServiceDetail, false)(w, r)
 		}
 	})
+
+	// Sessions endpoint - read-only
+	mux.HandleFunc("/api/sessions", authMgr.Middleware(a.HandleSessions, false))
+
+	// Users list endpoint - read-only
+	mux.HandleFunc("/api/users", authMgr.Middleware(a.HandleUsersList, false))
 }
