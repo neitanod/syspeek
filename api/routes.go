@@ -27,7 +27,8 @@ func (a *API) SetupRoutes(mux *http.ServeMux, authMgr *auth.AuthManager) {
 	mux.HandleFunc("/api/auth/logout", a.HandleLogout)
 	mux.HandleFunc("/api/auth/status", a.HandleAuthStatus)
 
-	// Close endpoint - for desktop mode (ignored in serve mode)
+	// Open/Close endpoints - for desktop mode (ignored in serve mode)
+	mux.HandleFunc("/api/open", a.HandleOpen)
 	mux.HandleFunc("/api/close", a.HandleClose)
 
 	// Process endpoints with dynamic PID

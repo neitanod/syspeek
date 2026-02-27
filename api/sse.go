@@ -16,6 +16,10 @@ type SSEData struct {
 }
 
 func (a *API) HandleSSE(w http.ResponseWriter, r *http.Request) {
+	// Track SSE connection
+	a.IncrementSSEConnections()
+	defer a.DecrementSSEConnections()
+
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

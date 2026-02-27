@@ -1270,6 +1270,9 @@ const app = createApp({
         };
 
         onMounted(async () => {
+            // Notify server that UI is open (cancels pending shutdown on reload)
+            navigator.sendBeacon('/api/open', '');
+
             // Listen for clicks to close popovers
             document.addEventListener('click', handleDocumentClick);
 

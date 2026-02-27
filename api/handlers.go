@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -19,6 +21,14 @@ type API struct {
 	config    *config.Config
 	auth      *auth.AuthManager
 	serveMode bool // true = server mode, false = desktop mode (close on browser exit)
+
+	// SSE connection tracking
+	sseConnections int32 // atomic counter
+
+	// Shutdown management
+	shutdownMu     sync.Mutex
+	shutdownTimer  *time.Timer
+	shutdownCancel chan struct{}
 }
 
 type LoginRequest struct {
@@ -61,7 +71,48 @@ func NewAPI(cfg *config.Config, authMgr *auth.AuthManager, serveMode bool) *API 
 	}
 }
 
-// HandleClose shuts down the server (only in desktop mode, ignored in serve mode)
+// SSE connection tracking
+func (a *API) IncrementSSEConnections() {
+	atomic.AddInt32(&a.sseConnections, 1)
+}
+
+func (a *API) DecrementSSEConnections() {
+	atomic.AddInt32(&a.sseConnections, -1)
+}
+
+func (a *API) GetSSEConnections() int32 {
+	return atomic.LoadInt32(&a.sseConnections)
+}
+
+// HandleOpen cancels any pending shutdown (called when UI opens/reloads)
+func (a *API) HandleOpen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	a.shutdownMu.Lock()
+	defer a.shutdownMu.Unlock()
+
+	// Cancel any pending shutdown
+	if a.shutdownCancel != nil {
+		close(a.shutdownCancel)
+		a.shutdownCancel = nil
+		fmt.Println("Shutdown cancelled: UI reopened")
+	}
+	if a.shutdownTimer != nil {
+		a.shutdownTimer.Stop()
+		a.shutdownTimer = nil
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"message": "UI opened",
+	})
+}
+
+// HandleClose schedules server shutdown with delay (only in desktop mode)
 func (a *API) HandleClose(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -80,15 +131,58 @@ func (a *API) HandleClose(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"success": true,
-		"message": "Server shutting down",
+		"message": "Server shutdown scheduled",
 	})
 
-	// Give time for response to be sent, then exit
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		fmt.Println("Browser closed. Exiting.")
+	// Schedule shutdown with 5 second delay
+	go a.scheduleShutdown()
+}
+
+func (a *API) scheduleShutdown() {
+	a.shutdownMu.Lock()
+
+	// If there's already a pending shutdown, don't start another
+	if a.shutdownTimer != nil {
+		a.shutdownMu.Unlock()
+		return
+	}
+
+	// Create cancellation channel
+	a.shutdownCancel = make(chan struct{})
+	cancelChan := a.shutdownCancel
+
+	// Create timer for 5 second delay
+	a.shutdownTimer = time.NewTimer(5 * time.Second)
+	timer := a.shutdownTimer
+
+	a.shutdownMu.Unlock()
+
+	fmt.Println("Browser closed. Waiting 5 seconds before shutdown...")
+
+	select {
+	case <-timer.C:
+		// Timer expired, check if we should actually shut down
+		a.shutdownMu.Lock()
+		a.shutdownTimer = nil
+		a.shutdownCancel = nil
+		a.shutdownMu.Unlock()
+
+		// Check if there are active SSE connections (other tabs)
+		if conns := a.GetSSEConnections(); conns > 0 {
+			fmt.Printf("Shutdown cancelled: %d active SSE connection(s)\n", conns)
+			return
+		}
+
+		fmt.Println("No active connections. Exiting.")
 		os.Exit(0)
-	}()
+
+	case <-cancelChan:
+		// Shutdown was cancelled (UI reopened)
+		a.shutdownMu.Lock()
+		a.shutdownTimer = nil
+		a.shutdownMu.Unlock()
+		return
+	}
 }
 
 func (a *API) HandleLogin(w http.ResponseWriter, r *http.Request) {
