@@ -2566,20 +2566,6 @@ main.compact .gpu-stats {
     width: 14px;
     height: 14px;
     vertical-align: middle;
-    filter: brightness(0) saturate(100%) invert(50%);
-    transition: filter 0.2s;
-}
-
-.maximize-btn:hover .icon-svg {
-    filter: brightness(0) saturate(100%) invert(80%);
-}
-
-[data-theme="light"] .maximize-btn .icon-svg {
-    filter: brightness(0) saturate(100%) invert(40%);
-}
-
-[data-theme="light"] .maximize-btn:hover .icon-svg {
-    filter: brightness(0) saturate(100%) invert(20%);
 }
 
 /* Main in maximized mode */
