@@ -27,6 +27,7 @@ const app = createApp({
         const sockets = ref({ tcp: [], udp: [], unix: [] });
         const firewall = ref({});
         const docker = ref({ containers: [], available: false });
+        const services = ref({ services: [], available: false, manager: '' });
 
         // Global search
         const globalSearch = ref('');
@@ -54,8 +55,11 @@ const app = createApp({
         const processFilter = ref('');
         const dockerFilter = ref('');
         const socketFilter = ref('');
+        const serviceFilter = ref('');
         const sortKey = ref('cpuPercent');
         const sortAsc = ref(false);
+        const serviceSortKey = ref('name');
+        const serviceSortAsc = ref(true);
         const socketTab = ref('tcp');
         const selectedProcess = ref(null);
         const newPriority = ref(0);
@@ -89,6 +93,14 @@ const app = createApp({
         // Show all items toggles (for "... and X more" links)
         const showAllFds = ref(false);
         const showAllEnv = ref(false);
+
+        // Services modal
+        const selectedService = ref(null);
+        const serviceLoading = ref(false);
+        const serviceLogs = ref('');
+        const serviceLogsLoading = ref(false);
+        const serviceLogLines = ref(100);
+        const servicesLoading = ref(false);
 
         // Service PID (to prevent self-kill)
         const servicePid = ref(null);
@@ -206,6 +218,41 @@ const app = createApp({
                 iface.mac?.toLowerCase().includes(filter)
             );
         });
+
+        const filteredServices = computed(() => {
+            let svcs = services.value.services || [];
+            const filter = (globalSearch.value || serviceFilter.value)?.toLowerCase();
+
+            if (filter) {
+                svcs = svcs.filter(s =>
+                    s.name?.toLowerCase().includes(filter) ||
+                    s.description?.toLowerCase().includes(filter) ||
+                    s.state?.toLowerCase().includes(filter)
+                );
+            }
+
+            // Sort
+            svcs = [...svcs].sort((a, b) => {
+                let aVal = a[serviceSortKey.value];
+                let bVal = b[serviceSortKey.value];
+                if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+                if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+                if (aVal < bVal) return serviceSortAsc.value ? -1 : 1;
+                if (aVal > bVal) return serviceSortAsc.value ? 1 : -1;
+                return 0;
+            });
+
+            return svcs;
+        });
+
+        const sortServicesBy = (key) => {
+            if (serviceSortKey.value === key) {
+                serviceSortAsc.value = !serviceSortAsc.value;
+            } else {
+                serviceSortKey.value = key;
+                serviceSortAsc.value = true;
+            }
+        };
 
         const hasSearchResults = computed(() => {
             if (!globalSearch.value) return true;
@@ -765,6 +812,100 @@ const app = createApp({
             return result;
         };
 
+        // Services functions
+        const refreshServices = async () => {
+            servicesLoading.value = true;
+            try {
+                const res = await fetch('/api/services');
+                if (res.ok) {
+                    services.value = await res.json();
+                }
+            } catch (e) {
+                console.error('Failed to refresh services:', e);
+            } finally {
+                servicesLoading.value = false;
+            }
+        };
+
+        const showServiceDetail = async (serviceName) => {
+            selectedService.value = { name: serviceName };
+            serviceLoading.value = true;
+            serviceLogs.value = '';
+            serviceLogLines.value = 100;
+
+            try {
+                const res = await fetch(`/api/service/${encodeURIComponent(serviceName)}`);
+                if (res.ok) {
+                    selectedService.value = await res.json();
+                } else {
+                    const error = await res.json();
+                    selectedService.value = { name: serviceName, error: error.message || 'Failed to load service' };
+                }
+            } catch (e) {
+                selectedService.value = { name: serviceName, error: e.message };
+            } finally {
+                serviceLoading.value = false;
+            }
+        };
+
+        const serviceAction = async (serviceName, action) => {
+            const actionNames = { stop: 'Stop', start: 'Start', restart: 'Restart', enable: 'Enable', disable: 'Disable' };
+            if (!confirm(`${actionNames[action]} service ${serviceName}?`)) return;
+
+            try {
+                const res = await fetch(`/api/service/${encodeURIComponent(serviceName)}/${action}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`Service ${action}ed successfully`, 'success');
+                    // Refresh service detail if modal is open
+                    if (selectedService.value && selectedService.value.name === serviceName) {
+                        showServiceDetail(serviceName);
+                    }
+                    // Refresh services list
+                    refreshServices();
+                } else {
+                    showToast(data.message || `Failed to ${action} service`, 'error');
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            }
+        };
+
+        const fetchServiceLogs = async (serviceName, lines = null) => {
+            if (lines) {
+                serviceLogLines.value = lines;
+            }
+            serviceLogsLoading.value = true;
+
+            try {
+                const res = await fetch(`/api/service/${encodeURIComponent(serviceName)}/logs?lines=${serviceLogLines.value}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    serviceLogs.value = data.logs || '';
+                    // Scroll logs to bottom
+                    setTimeout(() => {
+                        const logsEl = document.querySelector('.service-detail-modal .logs-content');
+                        if (logsEl) {
+                            logsEl.scrollTop = logsEl.scrollHeight;
+                        }
+                    }, 50);
+                } else {
+                    showToast('Failed to fetch service logs', 'error');
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message, 'error');
+            } finally {
+                serviceLogsLoading.value = false;
+            }
+        };
+
+        const loadMoreServiceLogs = async (serviceName) => {
+            const newLines = serviceLogLines.value * 2;
+            await fetchServiceLogs(serviceName, newLines);
+        };
+
         // Alert system functions
         const requestNotificationPermission = async () => {
             if (!('Notification' in window)) {
@@ -1035,6 +1176,9 @@ const app = createApp({
                 console.error('Failed to get service PID:', e);
             }
 
+            // Fetch services once at startup (not auto-refresh)
+            refreshServices();
+
             connectSSE();
         });
 
@@ -1078,6 +1222,7 @@ const app = createApp({
             sockets,
             firewall,
             docker,
+            services,
 
             // UI state
             paused,
@@ -1087,7 +1232,9 @@ const app = createApp({
             processFilter,
             dockerFilter,
             socketFilter,
+            serviceFilter,
             sortKey,
+            serviceSortKey,
             sortAsc,
             socketTab,
             selectedProcess,
@@ -1125,11 +1272,20 @@ const app = createApp({
             // Service PID
             servicePid,
 
+            // Services modal
+            selectedService,
+            serviceLoading,
+            serviceLogs,
+            serviceLogsLoading,
+            serviceLogLines,
+            servicesLoading,
+
             // Computed
             filteredProcesses,
             filteredSockets,
             filteredContainers,
             filteredInterfaces,
+            filteredServices,
             hasSearchResults,
             currentSockets,
 
@@ -1179,7 +1335,15 @@ const app = createApp({
             loadMoreLogs,
             fetchContainerTop,
             fetchContainerInspect,
-            resetContainerExtended
+            resetContainerExtended,
+
+            // Services
+            refreshServices,
+            showServiceDetail,
+            serviceAction,
+            fetchServiceLogs,
+            loadMoreServiceLogs,
+            sortServicesBy
         };
     }
 });

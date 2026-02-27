@@ -810,3 +810,121 @@ func (a *API) HandleDockerInspect(w http.ResponseWriter, r *http.Request) {
 	// Return wrapped JSON
 	writeJSON(w, http.StatusOK, map[string]string{"inspect": inspect})
 }
+
+// Services handlers
+func (a *API) HandleServices(w http.ResponseWriter, r *http.Request) {
+	info, err := collectors.GetServicesInfo()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (a *API) HandleServiceDetail(w http.ResponseWriter, r *http.Request) {
+	// Extract service name from path: /api/service/{name}
+	path := strings.TrimPrefix(r.URL.Path, "/api/service/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Service name required",
+		})
+		return
+	}
+
+	serviceName := parts[0]
+
+	detail, err := collectors.GetServiceDetail(serviceName)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, ActionResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (a *API) HandleServiceAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract service name and action from path: /api/service/{name}/{action}
+	path := strings.TrimPrefix(r.URL.Path, "/api/service/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Service name and action required",
+		})
+		return
+	}
+
+	serviceName := parts[0]
+	action := parts[1]
+
+	// Validate action
+	validActions := map[string]bool{"start": true, "stop": true, "restart": true, "enable": true, "disable": true}
+	if !validActions[action] {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Invalid action. Valid actions: start, stop, restart, enable, disable",
+		})
+		return
+	}
+
+	err := collectors.ServiceAction(serviceName, action)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ActionResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, ActionResponse{
+		Success: true,
+		Message: "Service " + action + " successful",
+	})
+}
+
+func (a *API) HandleServiceLogs(w http.ResponseWriter, r *http.Request) {
+	// Extract service name from path: /api/service/{name}/logs
+	path := strings.TrimPrefix(r.URL.Path, "/api/service/")
+	parts := strings.Split(path, "/")
+	if len(parts) < 2 || parts[0] == "" {
+		writeJSON(w, http.StatusBadRequest, ActionResponse{
+			Success: false,
+			Message: "Service name required",
+		})
+		return
+	}
+
+	serviceName := parts[0]
+
+	// Get lines parameter (default 100)
+	lines := 100
+	if l := r.URL.Query().Get("lines"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			lines = parsed
+		}
+	}
+
+	logs, err := collectors.GetServiceLogs(serviceName, lines)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, ActionResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"logs":  logs,
+		"lines": lines,
+	})
+}

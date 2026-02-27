@@ -105,4 +105,26 @@ func (a *API) SetupRoutes(mux *http.ServeMux, authMgr *auth.AuthManager) {
 			authMgr.Middleware(a.HandleDockerContainer, false)(w, r)
 		}
 	})
+
+	// Services endpoints
+	mux.HandleFunc("/api/services", authMgr.Middleware(a.HandleServices, false))
+	mux.HandleFunc("/api/service/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// Check if it's an action (start, stop, restart, enable, disable)
+		if strings.HasSuffix(path, "/start") ||
+			strings.HasSuffix(path, "/stop") ||
+			strings.HasSuffix(path, "/restart") ||
+			strings.HasSuffix(path, "/enable") ||
+			strings.HasSuffix(path, "/disable") {
+			// Requires read-write access
+			authMgr.MiddlewareReadWrite(a.HandleServiceAction)(w, r)
+		} else if strings.HasSuffix(path, "/logs") {
+			// Logs - read-only
+			authMgr.Middleware(a.HandleServiceLogs, false)(w, r)
+		} else {
+			// Service detail - read-only
+			authMgr.Middleware(a.HandleServiceDetail, false)(w, r)
+		}
+	})
 }

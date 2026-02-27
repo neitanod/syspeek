@@ -492,6 +492,56 @@
                 </section>
             </div>
 
+            <!-- Services row -->
+            <div class="row services-row" v-if="services.available">
+                <section class="panel services-panel" v-show="!maximizedPanel || maximizedPanel === 'services'" :class="{ 'panel-maximized': maximizedPanel === 'services' }">
+                    <div class="panel-header">
+                        <h2>Services ({{ filteredServices.length }})</h2>
+                        <span class="service-manager-badge">{{ services.manager }}</span>
+                        <div class="panel-controls">
+                            <input type="text" v-model="serviceFilter" placeholder="Filter..." class="filter-input filter-input-sm">
+                            <button @click="refreshServices" class="refresh-btn" :disabled="servicesLoading" title="Refresh">
+                                {{ servicesLoading ? '...' : '↻' }}
+                            </button>
+                            <button class="maximize-btn" @click="toggleMaximize('services')" :title="maximizedPanel === 'services' ? 'Restore' : 'Maximize'">
+                                {{ maximizedPanel === 'services' ? '🗗' : '🗖' }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-content">
+                        <table class="service-table">
+                            <thead>
+                                <tr>
+                                    <th class="status-icon-col"></th>
+                                    <th @click="sortServicesBy('name')" :class="{ sorted: serviceSortKey === 'name' }">Name</th>
+                                    <th>Description</th>
+                                    <th @click="sortServicesBy('state')" :class="{ sorted: serviceSortKey === 'state' }">State</th>
+                                    <th @click="sortServicesBy('pid')" :class="{ sorted: serviceSortKey === 'pid' }">PID</th>
+                                    <th v-if="readWrite">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="svc in filteredServices" :key="svc.name" @click="showServiceDetail(svc.name)" class="clickable">
+                                    <td class="status-icon-cell">
+                                        <span v-if="svc.state === 'running' || svc.state === 'active'" class="status-icon running" title="Running">●</span>
+                                        <span v-else-if="svc.state === 'failed'" class="status-icon error" title="Failed">●</span>
+                                        <span v-else class="status-icon stopped" title="Stopped">●</span>
+                                    </td>
+                                    <td>{{ svc.name }}</td>
+                                    <td class="service-desc">{{ svc.description }}</td>
+                                    <td :class="'status-' + svc.state?.toLowerCase()">{{ svc.state }} <span v-if="svc.subState && svc.subState !== svc.state">({{ svc.subState }})</span></td>
+                                    <td>{{ svc.pid > 0 ? svc.pid : '-' }}</td>
+                                    <td v-if="readWrite" @click.stop>
+                                        <button v-if="svc.state === 'running' || svc.state === 'active'" class="action-btn warning" @click="serviceAction(svc.name, 'stop')">Stop</button>
+                                        <button v-else class="action-btn success" @click="serviceAction(svc.name, 'start')">Start</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
             <!-- Bottom row: Sockets, Firewall -->
             <div class="row bottom-row">
                 <section class="panel sockets-panel" v-show="!maximizedPanel || maximizedPanel === 'sockets'" :class="{ 'panel-maximized': maximizedPanel === 'sockets' }">
@@ -1055,6 +1105,101 @@
                             </div>
                         </div>
                         <div v-else class="no-data">No members in this group</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Service Detail Modal -->
+        <div v-if="selectedService" class="modal-overlay" @click.self="selectedService = null; serviceLogs = ''">
+            <div class="modal service-detail-modal">
+                <div class="modal-header">
+                    <h2>Service: {{ selectedService.name }}</h2>
+                    <button @click="selectedService = null; serviceLogs = ''" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-content">
+                    <div v-if="serviceLoading" class="loading">Loading service information...</div>
+                    <div v-else-if="selectedService.error" class="error">{{ selectedService.error }}</div>
+                    <div v-else class="detail-grid">
+                        <div class="detail-section">
+                            <h3>Basic Info</h3>
+                            <div class="detail-row"><span>Name:</span> {{ selectedService.name }}</div>
+                            <div class="detail-row" v-if="selectedService.displayName"><span>Display Name:</span> {{ selectedService.displayName }}</div>
+                            <div class="detail-row" v-if="selectedService.description"><span>Description:</span> {{ selectedService.description }}</div>
+                            <div class="detail-row">
+                                <span>State:</span>
+                                <span :class="'status-' + selectedService.state?.toLowerCase()">{{ selectedService.state }}</span>
+                                <span v-if="selectedService.subState && selectedService.subState !== selectedService.state"> ({{ selectedService.subState }})</span>
+                            </div>
+                            <div class="detail-row"><span>Enabled:</span> {{ selectedService.enabled ? 'Yes' : 'No' }}</div>
+                            <div class="detail-row" v-if="selectedService.pid > 0"><span>PID:</span> <span class="pid-link" @click="showProcessDetail(selectedService.pid)">{{ selectedService.pid }}</span></div>
+                            <div class="detail-row" v-if="selectedService.type"><span>Type:</span> {{ selectedService.type }}</div>
+                        </div>
+                        <div class="detail-section">
+                            <h3>Execution</h3>
+                            <div class="detail-row" v-if="selectedService.execStart"><span>ExecStart:</span> <code>{{ selectedService.execStart }}</code></div>
+                            <div class="detail-row" v-if="selectedService.binaryPath"><span>Binary Path:</span> <code>{{ selectedService.binaryPath }}</code></div>
+                            <div class="detail-row" v-if="selectedService.execStop"><span>ExecStop:</span> <code>{{ selectedService.execStop }}</code></div>
+                            <div class="detail-row" v-if="selectedService.user"><span>User:</span> <span class="user-link" @click="showUserInfo(selectedService.user)">{{ selectedService.user }}</span></div>
+                            <div class="detail-row" v-if="selectedService.account"><span>Account:</span> {{ selectedService.account }}</div>
+                            <div class="detail-row" v-if="selectedService.group"><span>Group:</span> {{ selectedService.group }}</div>
+                            <div class="detail-row" v-if="selectedService.workingDir"><span>Working Dir:</span> <code>{{ selectedService.workingDir }}</code></div>
+                            <div class="detail-row" v-if="selectedService.restart"><span>Restart:</span> {{ selectedService.restart }}</div>
+                            <div class="detail-row" v-if="selectedService.startType"><span>Start Type:</span> {{ selectedService.startType }}</div>
+                        </div>
+                        <div class="detail-section" v-if="selectedService.memoryCurrent > 0 || selectedService.tasks > 0 || selectedService.startedAt">
+                            <h3>Resources</h3>
+                            <div class="detail-row" v-if="selectedService.startedAt"><span>Started At:</span> {{ selectedService.startedAt }}</div>
+                            <div class="detail-row" v-if="selectedService.memoryCurrent > 0"><span>Memory:</span> {{ formatBytes(selectedService.memoryCurrent) }}</div>
+                            <div class="detail-row" v-if="selectedService.tasks > 0"><span>Tasks:</span> {{ selectedService.tasks }}</div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedService.dependencies?.length > 0">
+                            <h3>Dependencies</h3>
+                            <div class="deps-list">
+                                <span v-for="dep in selectedService.dependencies" :key="dep" class="dep-tag" @click="showServiceDetail(dep)">{{ dep }}</span>
+                            </div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedService.environment?.length > 0">
+                            <h3>Environment</h3>
+                            <div class="env-list">
+                                <div v-for="e in selectedService.environment" :key="e" class="env-item">
+                                    <code>{{ e }}</code>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="detail-section full-width" v-if="selectedService.unitFile">
+                            <h3>Unit File</h3>
+                            <div class="detail-row"><span>Path:</span> <code>{{ selectedService.unitFile }}</code></div>
+                            <div v-if="selectedService.unitContent" class="unit-content">
+                                <pre>{{ selectedService.unitContent }}</pre>
+                            </div>
+                        </div>
+                        <!-- Service Logs -->
+                        <div class="detail-section full-width">
+                            <h3>
+                                Logs
+                                <button class="refresh-btn" @click="fetchServiceLogs(selectedService.name)" :disabled="serviceLogsLoading" title="Load logs">
+                                    {{ serviceLogsLoading ? '...' : '↻' }}
+                                </button>
+                                <span v-if="serviceLogs" class="logs-info">(last {{ serviceLogLines }} lines)</span>
+                            </h3>
+                            <div v-if="!serviceLogs && !serviceLogsLoading" class="no-data">
+                                Click refresh to load logs
+                            </div>
+                            <div v-else class="logs-container">
+                                <pre class="logs-content">{{ serviceLogs }}</pre>
+                                <button v-if="serviceLogs" @click="loadMoreServiceLogs(selectedService.name)" class="btn-secondary load-more-btn" :disabled="serviceLogsLoading">
+                                    Load More ({{ serviceLogLines * 2 }} lines)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-actions" v-if="readWrite && selectedService.name && !serviceLoading && !selectedService.error">
+                        <button v-if="selectedService.state === 'running' || selectedService.state === 'active'" @click="serviceAction(selectedService.name, 'stop')" class="btn-warning">Stop</button>
+                        <button v-if="selectedService.state !== 'running' && selectedService.state !== 'active'" @click="serviceAction(selectedService.name, 'start')" class="btn-success">Start</button>
+                        <button @click="serviceAction(selectedService.name, 'restart')" class="btn-primary">Restart</button>
+                        <button v-if="!selectedService.enabled" @click="serviceAction(selectedService.name, 'enable')" class="btn-secondary">Enable</button>
+                        <button v-if="selectedService.enabled" @click="serviceAction(selectedService.name, 'disable')" class="btn-secondary">Disable</button>
                     </div>
                 </div>
             </div>
