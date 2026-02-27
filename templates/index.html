@@ -37,29 +37,52 @@
                 <button @click="togglePauseAll" :class="{ active: pausedAll }" :title="pausedAll ? 'Resume all' : 'Pause all'">
                     {{ pausedAll ? '▶' : '❚❚' }}
                 </button>
-                <button @click="toggleCompact" :class="{ active: compact }" title="Compact mode">
-                    {{ compact ? '▢' : '▣' }}
-                </button>
-                <button @click="toggleTheme" title="Toggle theme">
-                    {{ theme === 'dark' ? '☀' : '☾' }}
-                </button>
                 <template v-if="authenticated">
                     <span v-if="readWrite" class="admin-badge">Admin</span>
                     <span v-else class="readonly-badge">Read Only</span>
                     <span class="user">{{ username }}</span>
-                    <button @click="logout">Logout</button>
                 </template>
                 <template v-else-if="hasReadWriteAuth || !isPublic">
                     <button @click="showLogin = true">Login</button>
                 </template>
                 <span v-else class="readonly-badge">Public</span>
+                <!-- Settings Menu -->
+                <div class="settings-menu-wrapper">
+                    <button @click.stop="showSettingsMenu = !showSettingsMenu" class="settings-btn" title="Settings">
+                        &#9881;
+                    </button>
+                    <div v-if="showSettingsMenu" class="settings-dropdown" @click.stop>
+                        <div class="settings-section">
+                            <div class="settings-item" @click="toggleCompact">
+                                <span class="settings-check">{{ compact ? '&#10003;' : '' }}</span>
+                                <span>Compact mode</span>
+                            </div>
+                            <div class="settings-item" @click="toggleTheme">
+                                <span class="settings-icon">{{ theme === 'dark' ? '☀' : '☾' }}</span>
+                                <span>{{ theme === 'dark' ? 'Light theme' : 'Dark theme' }}</span>
+                            </div>
+                            <div v-if="authenticated" class="settings-item" @click="logout">
+                                <span class="settings-icon">&#8594;</span>
+                                <span>Logout</span>
+                            </div>
+                        </div>
+                        <div class="settings-divider"></div>
+                        <div class="settings-section">
+                            <div class="settings-section-title">Visible Panels</div>
+                            <div v-for="panel in panelList" :key="panel.id" class="settings-item" @click="togglePanelVisibility(panel.id)">
+                                <span class="settings-check">{{ panelVisibility[panel.id] ? '&#10003;' : '' }}</span>
+                                <span>{{ panel.name }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </header>
 
         <main :class="{ compact: compact, maximized: maximizedPanel }">
             <!-- Top row: CPU, Memory, GPU, Disks -->
             <div class="row top-row">
-                <section class="panel cpu-panel" v-show="!maximizedPanel || maximizedPanel === 'cpu'" :class="{ 'panel-maximized': maximizedPanel === 'cpu' }">
+                <section class="panel cpu-panel" v-show="isPanelVisible('cpu') && (!maximizedPanel || maximizedPanel === 'cpu')" :class="{ 'panel-maximized': maximizedPanel === 'cpu' }">
                     <div class="panel-header">
                         <h2>CPU</h2>
                         <div class="panel-controls">
@@ -133,7 +156,7 @@
                     </div>
                 </section>
 
-                <section class="panel memory-panel" v-show="!maximizedPanel || maximizedPanel === 'memory'" :class="{ 'panel-maximized': maximizedPanel === 'memory' }">
+                <section class="panel memory-panel" v-show="isPanelVisible('memory') && (!maximizedPanel || maximizedPanel === 'memory')" :class="{ 'panel-maximized': maximizedPanel === 'memory' }">
                     <div class="panel-header">
                         <h2>Memory</h2>
                         <div class="panel-controls">
@@ -207,7 +230,7 @@
                     </div>
                 </section>
 
-                <section class="panel gpu-panel" v-if="gpu.available" v-show="!maximizedPanel || maximizedPanel === 'gpu'" :class="{ 'panel-maximized': maximizedPanel === 'gpu' }">
+                <section class="panel gpu-panel" v-if="gpu.available" v-show="isPanelVisible('gpu') && (!maximizedPanel || maximizedPanel === 'gpu')" :class="{ 'panel-maximized': maximizedPanel === 'gpu' }">
                     <div class="panel-header">
                         <h2>GPU</h2>
                         <div class="panel-controls">
@@ -297,7 +320,7 @@
                     </div>
                 </section>
 
-                <section class="panel disk-panel" v-show="!maximizedPanel || maximizedPanel === 'disk'" :class="{ 'panel-maximized': maximizedPanel === 'disk' }">
+                <section class="panel disk-panel" v-show="isPanelVisible('disk') && (!maximizedPanel || maximizedPanel === 'disk')" :class="{ 'panel-maximized': maximizedPanel === 'disk' }">
                     <div class="panel-header">
                         <h2>Disks</h2>
                         <div class="panel-controls">
@@ -356,7 +379,7 @@
 
             <!-- Main content: Processes (left) + Network (right) -->
             <div class="row main-row">
-                <section class="panel processes-panel" v-show="!maximizedPanel || maximizedPanel === 'processes'" :class="{ 'panel-maximized': maximizedPanel === 'processes' }">
+                <section class="panel processes-panel" v-show="isPanelVisible('processes') && (!maximizedPanel || maximizedPanel === 'processes')" :class="{ 'panel-maximized': maximizedPanel === 'processes' }">
                     <div class="panel-header">
                         <h2>Processes ({{ processes.totalCount || 0 }})</h2>
                         <div class="process-controls">
@@ -404,7 +427,7 @@
                     </div>
                 </section>
 
-                <section class="panel network-panel" v-show="!maximizedPanel || maximizedPanel === 'network'" :class="{ 'panel-maximized': maximizedPanel === 'network' }">
+                <section class="panel network-panel" v-show="isPanelVisible('network') && (!maximizedPanel || maximizedPanel === 'network')" :class="{ 'panel-maximized': maximizedPanel === 'network' }">
                     <div class="panel-header">
                         <h2>Network</h2>
                         <div class="panel-controls">
@@ -446,7 +469,7 @@
 
             <!-- Docker row -->
             <div class="row docker-row" v-if="docker.available && docker.containers?.length > 0">
-                <section class="panel docker-panel" v-show="!maximizedPanel || maximizedPanel === 'docker'" :class="{ 'panel-maximized': maximizedPanel === 'docker' }">
+                <section class="panel docker-panel" v-show="isPanelVisible('docker') && (!maximizedPanel || maximizedPanel === 'docker')" :class="{ 'panel-maximized': maximizedPanel === 'docker' }">
                     <div class="panel-header">
                         <h2>Docker ({{ docker.containers?.length || 0 }})</h2>
                         <div class="panel-controls">
@@ -494,7 +517,7 @@
 
             <!-- Services row -->
             <div class="row services-row" v-if="services.available">
-                <section class="panel services-panel" v-show="!maximizedPanel || maximizedPanel === 'services'" :class="{ 'panel-maximized': maximizedPanel === 'services' }">
+                <section class="panel services-panel" v-show="isPanelVisible('services') && (!maximizedPanel || maximizedPanel === 'services')" :class="{ 'panel-maximized': maximizedPanel === 'services' }">
                     <div class="panel-header">
                         <h2>Services ({{ filteredServices.length }})</h2>
                         <span class="service-manager-badge">{{ services.manager }}</span>
@@ -548,7 +571,7 @@
 
             <!-- Sessions row -->
             <div class="row sessions-row">
-                <section class="panel sessions-panel" v-show="!maximizedPanel || maximizedPanel === 'sessions'" :class="{ 'panel-maximized': maximizedPanel === 'sessions' }">
+                <section class="panel sessions-panel" v-show="isPanelVisible('sessions') && (!maximizedPanel || maximizedPanel === 'sessions')" :class="{ 'panel-maximized': maximizedPanel === 'sessions' }">
                     <div class="panel-header">
                         <h2>Active Sessions ({{ sessions.total || 0 }})</h2>
                         <div class="panel-controls">
@@ -593,7 +616,7 @@
 
             <!-- Bottom row: Sockets, Firewall -->
             <div class="row bottom-row">
-                <section class="panel sockets-panel" v-show="!maximizedPanel || maximizedPanel === 'sockets'" :class="{ 'panel-maximized': maximizedPanel === 'sockets' }">
+                <section class="panel sockets-panel" v-show="isPanelVisible('sockets') && (!maximizedPanel || maximizedPanel === 'sockets')" :class="{ 'panel-maximized': maximizedPanel === 'sockets' }">
                     <div class="panel-header">
                         <h2>Sockets ({{ sockets.total || 0 }})</h2>
                         <div class="socket-stats">
@@ -637,7 +660,7 @@
                     </div>
                 </section>
 
-                <section class="panel firewall-panel" v-show="!maximizedPanel || maximizedPanel === 'firewall'" :class="{ 'panel-maximized': maximizedPanel === 'firewall' }">
+                <section class="panel firewall-panel" v-show="isPanelVisible('firewall') && (!maximizedPanel || maximizedPanel === 'firewall')" :class="{ 'panel-maximized': maximizedPanel === 'firewall' }">
                     <div class="panel-header">
                         <h2>Firewall</h2>
                         <span class="fw-backend" v-if="firewall.available">{{ firewall.backend }}</span>

@@ -56,6 +56,55 @@ const app = createApp({
         });
         const pausedAll = ref(false);
         const maximizedPanel = ref(null); // null or panel name: 'cpu', 'memory', 'disk', 'network', 'gpu', 'processes', 'sockets', 'firewall', 'docker'
+        const showSettingsMenu = ref(false);
+
+        // Panel visibility (persisted in localStorage)
+        const panelList = [
+            { id: 'cpu', name: 'CPU' },
+            { id: 'memory', name: 'Memory' },
+            { id: 'gpu', name: 'GPU' },
+            { id: 'disk', name: 'Disks' },
+            { id: 'processes', name: 'Processes' },
+            { id: 'network', name: 'Network' },
+            { id: 'docker', name: 'Docker' },
+            { id: 'services', name: 'Services' },
+            { id: 'sessions', name: 'Sessions' },
+            { id: 'sockets', name: 'Sockets' },
+            { id: 'firewall', name: 'Firewall' }
+        ];
+
+        const defaultPanelVisibility = {
+            cpu: true, memory: true, gpu: true, disk: true,
+            processes: true, network: true, docker: true,
+            services: true, sessions: true, sockets: true, firewall: true
+        };
+
+        function loadPanelVisibility() {
+            const saved = localStorage.getItem('panelVisibility');
+            if (saved) {
+                try {
+                    return { ...defaultPanelVisibility, ...JSON.parse(saved) };
+                } catch (e) {
+                    return { ...defaultPanelVisibility };
+                }
+            }
+            return { ...defaultPanelVisibility };
+        }
+
+        const panelVisibility = ref(loadPanelVisibility());
+
+        function savePanelVisibility() {
+            localStorage.setItem('panelVisibility', JSON.stringify(panelVisibility.value));
+        }
+
+        function togglePanelVisibility(panelId) {
+            panelVisibility.value[panelId] = !panelVisibility.value[panelId];
+            savePanelVisibility();
+        }
+
+        function isPanelVisible(panelId) {
+            return panelVisibility.value[panelId] !== false;
+        }
 
         const toggleMaximize = (panel) => {
             maximizedPanel.value = maximizedPanel.value === panel ? null : panel;
@@ -1209,6 +1258,9 @@ const app = createApp({
             if (activePopover.value) {
                 activePopover.value = null;
             }
+            if (showSettingsMenu.value) {
+                showSettingsMenu.value = false;
+            }
         };
 
         // Handle page close - notify server to shutdown (desktop mode only)
@@ -1315,6 +1367,11 @@ const app = createApp({
             pausedAll,
             maximizedPanel,
             toggleMaximize,
+            showSettingsMenu,
+            panelList,
+            panelVisibility,
+            togglePanelVisibility,
+            isPanelVisible,
             processFilter,
             dockerFilter,
             socketFilter,

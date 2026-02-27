@@ -181,6 +181,81 @@ button {
     background: var(--accent-color);
 }
 
+/* Settings Menu */
+.settings-menu-wrapper {
+    position: relative;
+}
+
+.settings-btn {
+    font-size: 18px;
+    padding: 8px 14px !important;
+}
+
+.settings-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    min-width: 200px;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.settings-section {
+    padding: 8px 0;
+}
+
+.settings-section-title {
+    padding: 8px 16px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.settings-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.settings-item:hover {
+    background: var(--bg-hover);
+}
+
+.settings-check {
+    width: 16px;
+    text-align: center;
+    color: var(--accent-color);
+    font-weight: bold;
+}
+
+.settings-icon {
+    width: 16px;
+    text-align: center;
+}
+
+.settings-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 0;
+}
+
+[data-theme="light"] .settings-dropdown {
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+
 .header-center button {
     padding: 10px 20px;
     border: none;
@@ -2660,6 +2735,8 @@ main.maximized .row {
 /* Services Panel */
 .services-panel {
     grid-column: 1 / -1;
+    flex: 1;
+    width: 100%;
 }
 
 .services-row {
