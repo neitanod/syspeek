@@ -403,6 +403,7 @@
                                     <th @click="sortBy('memoryPercent')" :class="{ sorted: sortKey === 'memoryPercent' }">Mem%</th>
                                     <th @click="sortBy('memoryBytes')" :class="{ sorted: sortKey === 'memoryBytes' }">Memory</th>
                                     <th @click="sortBy('threads')" :class="{ sorted: sortKey === 'threads' }">Thr</th>
+                                    <th @click="sortBy('startTime')" :class="{ sorted: sortKey === 'startTime' }">Uptime</th>
                                     <th>Command</th>
                                     <th v-if="readWrite">Actions</th>
                                 </tr>
@@ -416,6 +417,7 @@
                                     <td :class="getMemClass(proc.memoryPercent)">{{ proc.memoryPercent?.toFixed(1) }}</td>
                                     <td>{{ formatBytes(proc.memoryBytes) }}</td>
                                     <td>{{ proc.threads }}</td>
+                                    <td>{{ proc.uptime }}</td>
                                     <td class="command">{{ proc.command }}</td>
                                     <td v-if="readWrite" @click.stop>
                                         <button v-if="!isServiceProcess(proc.pid)" class="action-btn kill" @click="quickKillProcess(proc.pid, proc.name)">Kill</button>

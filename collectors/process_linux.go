@@ -28,6 +28,7 @@ type ProcessBasic struct {
 	Threads     int     `json:"threads"`
 	Nice        int     `json:"nice"`
 	StartTime   int64   `json:"startTime"`
+	Uptime      string  `json:"uptime"`
 }
 
 type ProcessConnection struct {
@@ -208,9 +209,13 @@ func getProcessBasic(pid int, elapsed float64) (*ProcessBasic, error) {
 	previousCPUTicks[pid] = totalTicks
 	processMutex.Unlock()
 
-	// Get start time
+	// Get start time and calculate uptime
 	starttime, _ := strconv.ParseUint(fields[19], 10, 64)
 	proc.StartTime = systemBootTime + int64(starttime/100)
+	if proc.StartTime > 0 {
+		uptimeSecs := time.Now().Unix() - proc.StartTime
+		proc.Uptime = formatUptime(float64(uptimeSecs))
+	}
 
 	// Read memory info from statm
 	statmPath := filepath.Join(procPath, "statm")
