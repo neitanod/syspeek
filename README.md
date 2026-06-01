@@ -1,3 +1,5 @@
+**English** · [Español](README.es.md)
+
 # Syspeek
 
 Real-time system monitor with a web interface. Like `top` or `htop`, but in your browser with clickable cross-references between processes, users, network connections, and more.
@@ -13,7 +15,7 @@ Real-time system monitor with a web interface. Like `top` or `htop`, but in your
 - **Disk**: Filesystem usage and I/O stats.
 - **Network**: Interface traffic with real-time bandwidth graphs.
 - **GPU**: NVIDIA GPU stats (if available).
-- **Firewall**: View iptables/nftables rules.
+- **Firewall**: View iptables/nftables rules (Linux) or Windows Firewall status.
 
 ### Cross-referencing
 
@@ -27,15 +29,31 @@ Everything is interconnected, making it easy to investigate "what's using my net
 
 ## Installation
 
+### Linux / macOS
+
 ```bash
-# Clone and build
 git clone https://github.com/neitanod/syspeek.git
 cd syspeek
-go build -o syspeek .
-
+./build
 # Optional: install system-wide
 sudo ln -sf $(pwd)/syspeek /usr/bin/syspeek
 ```
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/neitanod/syspeek.git
+cd syspeek
+.\build.ps1
+.\run.ps1 -p
+```
+
+### Or install with an AI agent
+
+If you use an agent with terminal access (Claude Code, Cursor, etc.), paste
+this prompt and let it install everything for you:
+
+<https://github.com/neitanod/syspeek/blob/main/install_prompt.md>
 
 ## Usage
 
@@ -45,6 +63,9 @@ syspeek
 
 # Server mode (no browser, useful for remote access)
 syspeek --serve
+
+# Public read-only mode (no auth required, useful for first run)
+syspeek -p
 
 # Custom port
 syspeek --port 8080
@@ -57,7 +78,8 @@ If port 9876 is busy, it automatically tries the next port (up to 50 attempts).
 
 ## Configuration
 
-Copy `config.example.json` to `~/.config/syspeek/config.json`:
+Copy `config.example.json` to `~/.config/syspeek/config.json`
+(on Windows: `%USERPROFILE%\.config\syspeek\config.json`):
 
 ```json
 {
@@ -76,93 +98,22 @@ Copy `config.example.json` to `~/.config/syspeek/config.json`:
 }
 ```
 
-Authentication is optional. Without it, the interface is read-only (can't kill processes).
+Authentication is optional. Without it (or in `-p` mode), the interface is read-only (can't kill processes).
 
 ## Requirements
 
-- Linux (reads from `/proc`)
+- Linux (reads from `/proc`), macOS, or Windows 10+
 - Go 1.21+ (for building)
 - NVIDIA drivers (optional, for GPU stats)
 
+### Notes on the Windows backend
+
+The Windows collectors use a mix of native Go (via `gopsutil`) and PowerShell
+invocations of WMI (for memory, services, users, firewall and GPU). PowerShell
+cold-start adds a few seconds to the very first read of each panel; subsequent
+reads are served from a short-TTL in-process cache, so the live updates feel
+the same as on Linux.
+
 ## License
-
-MIT
-
----
-
-# Syspeek (Español)
-
-Monitor de sistema en tiempo real con interfaz web. Como `top` o `htop`, pero en el navegador y con referencias cruzadas clickeables entre procesos, usuarios, conexiones de red y más.
-
-### Referencias cruzadas
-
-La característica principal son los **links clickeables en todos lados**:
-- Click en un PID en la vista de sockets → salta a ese proceso
-- Click en un usuario → filtra procesos por ese usuario
-- Click en una IP → muestra geolocalización, hostname, whois
-- Click en un puerto → muestra qué servicio lo usa típicamente
-
-Todo está interconectado, facilitando investigar "¿qué está usando mi red?" o "¿qué procesos tiene este usuario?".
-
-## Instalación
-
-```bash
-# Clonar y compilar
-git clone https://github.com/neitanod/syspeek.git
-cd syspeek
-go build -o syspeek .
-
-# Opcional: instalar en el sistema
-sudo ln -sf $(pwd)/syspeek /usr/bin/syspeek
-```
-
-## Uso
-
-```bash
-# Abre el navegador automáticamente en puerto 9876
-syspeek
-
-# Modo servidor (sin navegador, útil para acceso remoto)
-syspeek --serve
-
-# Puerto personalizado
-syspeek --port 8080
-
-# Con archivo de configuración
-syspeek --config-file config.json
-```
-
-Si el puerto 9876 está ocupado, automáticamente prueba el siguiente (hasta 50 intentos).
-
-## Configuración
-
-Copiar `config.example.json` a `~/.config/syspeek/config.json`:
-
-```json
-{
-  "server": {
-    "host": "0.0.0.0",
-    "port": 9876
-  },
-  "auth": {
-    "username": "admin",
-    "password": "tu-password"
-  },
-  "ui": {
-    "title": "Mi Servidor",
-    "theme": "dark"
-  }
-}
-```
-
-La autenticación es opcional. Sin ella, la interfaz es solo lectura (no se pueden matar procesos).
-
-## Requisitos
-
-- Linux (lee de `/proc`)
-- Go 1.21+ (para compilar)
-- Drivers NVIDIA (opcional, para stats de GPU)
-
-## Licencia
 
 MIT
