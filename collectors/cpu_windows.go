@@ -39,9 +39,12 @@ type CPUInfo struct {
 
 // runPowerShell runs a PowerShell snippet and returns its trimmed stdout. The
 // script is passed via -EncodedCommand (UTF-16LE base64) so multi-line scripts
-// and embedded quotes are not mangled by cmd.exe's argument parsing.
+// and embedded quotes are not mangled by cmd.exe's argument parsing. A UTF-8
+// prelude is prepended so accented characters survive the round-trip back to
+// the HTTP response (PowerShell otherwise emits the current OEM code page).
 func runPowerShell(script string) (string, error) {
-	encoded := encodePowerShellCommand(script)
+	const utf8Prelude = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); $OutputEncoding = [System.Text.UTF8Encoding]::new(); "
+	encoded := encodePowerShellCommand(utf8Prelude + script)
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
 	out, err := cmd.Output()
 	if err != nil {
