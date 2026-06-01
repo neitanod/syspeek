@@ -4,6 +4,17 @@ package collectors
 
 import (
 	"strings"
+	"sync"
+	"time"
+
+	gpshost "github.com/shirou/gopsutil/v3/host"
+)
+
+var (
+	usersListCache    UsersListInfo
+	usersListCachedAt time.Time
+	usersListMu       sync.Mutex
+	usersListTTL      = 30 * time.Second
 )
 
 type Session struct {
@@ -37,161 +48,107 @@ type UsersListInfo struct {
 }
 
 func GetSessions() (SessionsInfo, error) {
-	// Use 'query user' command to get active sessions
-	script := `query user 2>$null | ForEach-Object {
-		$line = $_.Trim()
-		if ($line -and -not $line.StartsWith("USERNAME")) {
-			$parts = $line -split '\s+'
-			if ($parts.Count -ge 4) {
-				$user = $parts[0].TrimStart('>')
-				$sessionName = $parts[1]
-				$id = $parts[2]
-				$state = $parts[3]
-				$idle = if ($parts.Count -ge 5) { $parts[4] } else { "" }
-				$logon = if ($parts.Count -ge 6) { $parts[5..($parts.Count-1)] -join " " } else { "" }
-				"$user|$sessionName|$id|$state|$idle|$logon"
-			}
-		}
-	}`
+	info := SessionsInfo{Sessions: []Session{}}
 
-	output, err := runPowerShell(script)
+	users, err := gpshost.Users()
 	if err != nil {
-		return SessionsInfo{}, err
+		// gopsutil/host can fail on stripped systems; treat as no sessions
+		return info, nil
 	}
 
-	var sessions []Session
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		fields := strings.Split(line, "|")
-		if len(fields) < 4 {
-			continue
-		}
-
+	for _, u := range users {
 		session := Session{
-			User:     fields[0],
-			Terminal: fields[1], // Session name (console, rdp-tcp, etc.)
+			User:     u.User,
+			Terminal: u.Terminal,
+			Host:     u.Host,
 		}
-
-		if len(fields) >= 5 && fields[4] != "" && fields[4] != "." {
-			session.Idle = fields[4]
+		if u.Started > 0 {
+			session.Login = time.Unix(int64(u.Started), 0).Format("2006-01-02 15:04")
 		}
-
-		if len(fields) >= 6 {
-			session.Login = fields[5]
-		}
-
-		// State is in fields[3] - Active, Disc, etc.
-		if fields[3] != "Active" {
-			session.Terminal += " (" + fields[3] + ")"
-		}
-
-		sessions = append(sessions, session)
+		info.Sessions = append(info.Sessions, session)
 	}
 
-	return SessionsInfo{
-		Sessions: sessions,
-		Total:    len(sessions),
-	}, nil
+	info.Total = len(info.Sessions)
+	return info, nil
 }
 
 func GetUsersList() (UsersListInfo, error) {
-	// Use PowerShell to get local users
-	script := `Get-LocalUser | ForEach-Object {
-		$sid = $_.SID.Value
-		$groups = (Get-LocalGroup | Where-Object { (Get-LocalGroupMember $_.Name -ErrorAction SilentlyContinue | Where-Object { $_.SID -eq $sid }) }) | ForEach-Object { $_.Name }
-		$groupList = $groups -join ","
-		$enabled = $_.Enabled
-		$desc = $_.Description -replace '\|', '-'
-		$home = if ($_.HomeDirectory) { $_.HomeDirectory } else { "C:\Users\$($_.Name)" }
-		"$($_.Name)|$sid|$enabled|$desc|$home|$groupList"
+	usersListMu.Lock()
+	if !usersListCachedAt.IsZero() && time.Since(usersListCachedAt) < usersListTTL {
+		cached := usersListCache
+		usersListMu.Unlock()
+		return cached, nil
+	}
+	usersListMu.Unlock()
+
+	info := UsersListInfo{Users: []SystemUser{}}
+
+	// Single PowerShell invocation with Win32_UserAccount, much cheaper than
+	// iterating Get-LocalGroupMember per user.
+	script := `Get-CimInstance Win32_UserAccount -Filter "LocalAccount=True" | ForEach-Object {
+		$desc = if ($_.Description) { $_.Description -replace '\|', '-' } else { "" }
+		$disabled = $_.Disabled
+		"$($_.Name)|$($_.SID)|$disabled|$desc|C:\Users\$($_.Name)"
 	}`
 
 	output, err := runPowerShell(script)
 	if err != nil {
-		return UsersListInfo{}, err
+		// Fall back to an empty list rather than failing the endpoint
+		return info, nil
 	}
 
-	var users []SystemUser
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-
-	for _, line := range lines {
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-
 		fields := strings.Split(line, "|")
 		if len(fields) < 5 {
 			continue
 		}
-
-		user := SystemUser{
+		u := SystemUser{
 			Username: fields[0],
 			Gecos:    fields[3],
 			HomeDir:  fields[4],
 			Shell:    "cmd.exe",
+			IsSystem: strings.EqualFold(fields[2], "True"),
 		}
-
-		// Windows doesn't have numeric UIDs in the same sense
-		// We'll use a hash or just set to 0
-		user.UID = 0
-		user.GID = 0
-
-		// Check if system user (disabled or built-in)
-		user.IsSystem = fields[2] == "False" || strings.HasPrefix(fields[0], "Default")
-
-		if len(fields) >= 6 && fields[5] != "" {
-			user.Groups = strings.Split(fields[5], ",")
-		}
-
-		users = append(users, user)
+		info.Users = append(info.Users, u)
 	}
 
-	// Also try to get domain users if available
-	domainScript := `try {
-		$domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
-		# Domain users would be retrieved here
-	} catch {
-		# Not domain joined
-	}`
-	runPowerShell(domainScript)
+	info.Total = len(info.Users)
 
-	return UsersListInfo{
-		Users: users,
-		Total: len(users),
-	}, nil
+	usersListMu.Lock()
+	usersListCache = info
+	usersListCachedAt = time.Now()
+	usersListMu.Unlock()
+
+	return info, nil
 }
 
-// getUserGroups returns groups for a Windows user
+// getUserGroups returns groups for a Windows user. Used by user_windows.go.
 func getUserGroups(username string) []string {
-	script := `$groups = @()
-	$user = Get-LocalUser -Name '` + username + `' -ErrorAction SilentlyContinue
-	if ($user) {
-		$sid = $user.SID.Value
-		Get-LocalGroup | ForEach-Object {
-			$members = Get-LocalGroupMember $_.Name -ErrorAction SilentlyContinue
-			if ($members | Where-Object { $_.SID -eq $sid }) {
-				$groups += $_.Name
+	script := `$user = Get-LocalUser -Name '` + username + `' -ErrorAction SilentlyContinue
+		if ($user) {
+			$sid = $user.SID.Value
+			Get-LocalGroup | ForEach-Object {
+				$members = Get-LocalGroupMember $_.Name -ErrorAction SilentlyContinue
+				if ($members | Where-Object { $_.SID -eq $sid }) {
+					$_.Name
+				}
 			}
-		}
-	}
-	$groups -join ","`
+		}`
 
 	output, err := runPowerShell(script)
 	if err != nil {
 		return nil
 	}
 
-	output = strings.TrimSpace(output)
-	if output == "" {
-		return nil
+	var groups []string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if g := strings.TrimSpace(line); g != "" {
+			groups = append(groups, g)
+		}
 	}
-
-	return strings.Split(output, ",")
+	return groups
 }

@@ -5,6 +5,15 @@ package collectors
 import (
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	servicesCache    ServicesInfo
+	servicesCachedAt time.Time
+	servicesMu       sync.Mutex
+	servicesTTL      = 30 * time.Second
 )
 
 type Service struct {
@@ -50,27 +59,38 @@ type ServicesInfo struct {
 }
 
 func GetServicesInfo() (ServicesInfo, error) {
+	servicesMu.Lock()
+	if !servicesCachedAt.IsZero() && time.Since(servicesCachedAt) < servicesTTL {
+		cached := servicesCache
+		servicesMu.Unlock()
+		return cached, nil
+	}
+	servicesMu.Unlock()
+
 	services, err := getWindowsServices()
 	if err != nil {
 		return ServicesInfo{Available: true, Manager: "windows"}, err
 	}
 
-	return ServicesInfo{
+	info := ServicesInfo{
 		Available: true,
 		Manager:   "windows",
 		Services:  services,
-	}, nil
+	}
+
+	servicesMu.Lock()
+	servicesCache = info
+	servicesCachedAt = time.Now()
+	servicesMu.Unlock()
+
+	return info, nil
 }
 
 func getWindowsServices() ([]Service, error) {
-	// Use PowerShell to get services with more details
-	script := `Get-Service | ForEach-Object {
-		$proc = Get-CimInstance Win32_Service -Filter "Name='$($_.Name)'" -ErrorAction SilentlyContinue
-		$pid = if ($proc) { $proc.ProcessId } else { 0 }
-		$startType = if ($proc) { $proc.StartMode } else { "Unknown" }
-		$desc = if ($proc) { $proc.Description } else { "" }
-		$type = if ($proc) { $proc.ServiceType } else { "" }
-		"$($_.Name)|$($_.DisplayName)|$($_.Status)|$pid|$startType|$desc|$type"
+	// Single Win32_Service query — avoids one PowerShell roundtrip per service.
+	script := `Get-CimInstance Win32_Service | ForEach-Object {
+		$desc = if ($_.Description) { $_.Description -replace '\|', '-' -replace "\r?\n", " " } else { "" }
+		"$($_.Name)|$($_.DisplayName)|$($_.State)|$($_.ProcessId)|$($_.StartMode)|$desc|$($_.ServiceType)"
 	}`
 
 	output, err := runPowerShell(script)

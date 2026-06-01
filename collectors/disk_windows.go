@@ -3,8 +3,10 @@
 package collectors
 
 import (
-	"strconv"
-	"strings"
+	"sync"
+	"time"
+
+	gpsdisk "github.com/shirou/gopsutil/v3/disk"
 )
 
 type Partition struct {
@@ -30,77 +32,69 @@ type DiskInfo struct {
 	IO         []DiskIO    `json:"io,omitempty"`
 }
 
+type diskIOSnapshot struct {
+	readBytes  uint64
+	writeBytes uint64
+	at         time.Time
+}
+
+var (
+	prevDiskIO   = map[string]diskIOSnapshot{}
+	prevDiskIOMu sync.Mutex
+)
+
 func GetDiskInfo() (DiskInfo, error) {
 	info := DiskInfo{}
 
-	// Get disk info using PowerShell
-	script := `
-Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
-    "$($_.DeviceID)|$($_.FileSystem)|$($_.Size)|$($_.FreeSpace)"
-}
-`
-	out, err := runPowerShell(script)
+	parts, err := gpsdisk.Partitions(false)
 	if err != nil {
 		return info, err
 	}
 
-	lines := strings.Split(out, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	for _, p := range parts {
+		usage, err := gpsdisk.Usage(p.Mountpoint)
+		if err != nil || usage.Total == 0 {
 			continue
 		}
-
-		parts := strings.Split(line, "|")
-		if len(parts) < 4 {
-			continue
-		}
-
-		total, _ := strconv.ParseUint(parts[2], 10, 64)
-		free, _ := strconv.ParseUint(parts[3], 10, 64)
-
-		if total == 0 {
-			continue
-		}
-
-		part := Partition{
-			Device:     parts[0],
-			MountPoint: parts[0] + "\\",
-			FSType:     parts[1],
-			Total:      total,
-			Free:       free,
-			Used:       total - free,
-		}
-		part.UsedPercent = float64(part.Used) / float64(part.Total) * 100
-
-		info.Partitions = append(info.Partitions, part)
+		info.Partitions = append(info.Partitions, Partition{
+			Device:      p.Device,
+			MountPoint:  p.Mountpoint,
+			FSType:      p.Fstype,
+			Total:       usage.Total,
+			Used:        usage.Used,
+			Free:        usage.Free,
+			UsedPercent: usage.UsedPercent,
+		})
 	}
 
-	// Get disk I/O stats
-	ioScript := `
-Get-CimInstance Win32_PerfFormattedData_PerfDisk_LogicalDisk | Where-Object { $_.Name -ne '_Total' -and $_.Name -match '^[A-Z]:$' } | ForEach-Object {
-    "$($_.Name)|$($_.DiskReadBytesPerSec)|$($_.DiskWriteBytesPerSec)"
-}
-`
-	ioOut, err := runPowerShell(ioScript)
+	// I/O counters per physical disk. Derive per-second speed by diffing
+	// against the previous snapshot.
+	io, err := gpsdisk.IOCounters()
 	if err == nil {
-		lines := strings.Split(ioOut, "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
+		now := time.Now()
+		prevDiskIOMu.Lock()
+		for name, c := range io {
+			cur := diskIOSnapshot{readBytes: c.ReadBytes, writeBytes: c.WriteBytes, at: now}
+			row := DiskIO{
+				Device:     name,
+				ReadBytes:  c.ReadBytes,
+				WriteBytes: c.WriteBytes,
 			}
-			parts := strings.Split(line, "|")
-			if len(parts) >= 3 {
-				readSpeed, _ := strconv.ParseUint(parts[1], 10, 64)
-				writeSpeed, _ := strconv.ParseUint(parts[2], 10, 64)
-				info.IO = append(info.IO, DiskIO{
-					Device:     parts[0],
-					ReadSpeed:  readSpeed,
-					WriteSpeed: writeSpeed,
-				})
+			if prev, ok := prevDiskIO[name]; ok {
+				elapsed := now.Sub(prev.at).Seconds()
+				if elapsed > 0 {
+					if c.ReadBytes >= prev.readBytes {
+						row.ReadSpeed = uint64(float64(c.ReadBytes-prev.readBytes) / elapsed)
+					}
+					if c.WriteBytes >= prev.writeBytes {
+						row.WriteSpeed = uint64(float64(c.WriteBytes-prev.writeBytes) / elapsed)
+					}
+				}
 			}
+			prevDiskIO[name] = cur
+			info.IO = append(info.IO, row)
 		}
+		prevDiskIOMu.Unlock()
 	}
 
 	return info, nil

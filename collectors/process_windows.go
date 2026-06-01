@@ -3,10 +3,16 @@
 package collectors
 
 import (
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
+
+	gpsmem "github.com/shirou/gopsutil/v3/mem"
+	gpsproc "github.com/shirou/gopsutil/v3/process"
 )
 
 type ProcessInfo struct {
@@ -48,179 +54,206 @@ type ProcessList struct {
 	TotalCount int           `json:"totalCount"`
 }
 
+
+var (
+	prevProcCPU   = map[int32]float64{}
+	prevProcCPUMu sync.Mutex
+
+	processListCache    ProcessList
+	processListCachedAt time.Time
+	processListMu       sync.Mutex
+	processListTTL      = 6 * time.Second
+)
+
 func GetProcessList() (ProcessList, error) {
-	list := ProcessList{}
+	processListMu.Lock()
+	if !processListCachedAt.IsZero() && time.Since(processListCachedAt) < processListTTL {
+		cached := processListCache
+		processListMu.Unlock()
+		return cached, nil
+	}
+	processListMu.Unlock()
 
-	// Get total memory for calculating percentages
+	list := ProcessList{Processes: []ProcessInfo{}}
+
 	var totalMemory uint64
-	memScript := `(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory`
-	memOut, _ := runPowerShell(memScript)
-	totalMemory, _ = strconv.ParseUint(strings.TrimSpace(memOut), 10, 64)
+	if vm, err := gpsmem.VirtualMemory(); err == nil {
+		totalMemory = vm.Total
+	}
 
-	// Get process info using PowerShell - more reliable than wmic
-	script := `
-Get-Process | ForEach-Object {
-    $owner = ""
-    try {
-        $owner = (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)" -ErrorAction SilentlyContinue).GetOwner().User
-    } catch {}
-    "$($_.Id)|$($_.ProcessName)|$($_.CPU)|$($_.WorkingSet64)|$($_.Threads.Count)|$($_.Path)|$owner"
-}
-`
-	out, err := runPowerShell(script)
+	pids, err := gpsproc.Pids()
 	if err != nil {
 		return list, err
 	}
 
-	// Also get parent process IDs
-	ppidScript := `Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)|$($_.ParentProcessId)|$($_.CommandLine)" }`
-	ppidOut, _ := runPowerShell(ppidScript)
-	ppidMap := make(map[int]struct {
-		ppid    int
-		cmdLine string
-	})
-	for _, line := range strings.Split(ppidOut, "\n") {
-		line = strings.TrimSpace(line)
-		parts := strings.SplitN(line, "|", 3)
-		if len(parts) >= 2 {
-			pid, _ := strconv.Atoi(parts[0])
-			ppid, _ := strconv.Atoi(parts[1])
-			cmdLine := ""
-			if len(parts) >= 3 {
-				cmdLine = parts[2]
-			}
-			ppidMap[pid] = struct {
-				ppid    int
-				cmdLine string
-			}{ppid, cmdLine}
-		}
+	prevProcCPUMu.Lock()
+	prevSnapshot := prevProcCPU
+	prevProcCPUMu.Unlock()
+
+	type entry struct {
+		pi  ProcessInfo
+		cur float64
 	}
 
-	lines := strings.Split(out, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		parts := strings.SplitN(line, "|", 7)
-		if len(parts) < 5 {
-			continue
-		}
-
-		pid, _ := strconv.Atoi(parts[0])
-		cpu, _ := strconv.ParseFloat(parts[2], 64)
-		memBytes, _ := strconv.ParseUint(parts[3], 10, 64)
-		threads, _ := strconv.Atoi(parts[4])
-
-		proc := ProcessInfo{
-			PID:         pid,
-			Name:        parts[1],
-			CPUPercent:  cpu,
-			MemoryBytes: memBytes,
-			VmRss:       memBytes,
-			Threads:     threads,
-			State:       "running",
-		}
-
-		if len(parts) >= 6 && parts[5] != "" {
-			proc.Exe = parts[5]
-		}
-		if len(parts) >= 7 && parts[6] != "" {
-			proc.User = parts[6]
-		}
-
-		// Add PPID and command line from second query
-		if ppidData, ok := ppidMap[pid]; ok {
-			proc.PPID = ppidData.ppid
-			if ppidData.cmdLine != "" {
-				proc.Command = ppidData.cmdLine
-				proc.CommandLine = strings.Fields(ppidData.cmdLine)
-			}
-		}
-
-		// Calculate memory percentage
-		if totalMemory > 0 {
-			proc.MemoryPercent = float64(memBytes) / float64(totalMemory) * 100
-		}
-
-		list.Processes = append(list.Processes, proc)
+	in := make(chan int32, len(pids))
+	out := make(chan entry, len(pids))
+	for _, pid := range pids {
+		in <- pid
 	}
+	close(in)
+
+	// LookupAccountSid (gopsutil Username) is the main cost per process; with
+	// 300+ PIDs and synchronous calls this loop took >10s. Fan out across
+	// workers — each call opens and closes its own handle, so they're safe
+	// to run in parallel.
+	workers := 32
+	if len(pids) < workers {
+		workers = len(pids)
+	}
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for pid := range in {
+				p, err := gpsproc.NewProcess(pid)
+				if err != nil {
+					continue
+				}
+				pi := ProcessInfo{PID: int(pid), State: "running"}
+				if name, err := p.Name(); err == nil {
+					pi.Name = name
+				}
+				if ppid, err := p.Ppid(); err == nil {
+					pi.PPID = int(ppid)
+				}
+				if user, err := p.Username(); err == nil {
+					pi.User = user
+				}
+				if mem, err := p.MemoryInfo(); err == nil && mem != nil {
+					pi.MemoryBytes = mem.RSS
+					pi.VmRss = mem.RSS
+					pi.VmSize = mem.VMS
+					if totalMemory > 0 {
+						pi.MemoryPercent = float64(mem.RSS) / float64(totalMemory) * 100
+					}
+				}
+				if threads, err := p.NumThreads(); err == nil {
+					pi.Threads = int(threads)
+				}
+				var cur float64
+				if times, err := p.Times(); err == nil {
+					cur = times.User + times.System
+					if prev, ok := prevSnapshot[pid]; ok && cur >= prev {
+						pi.CPUPercent = cur - prev
+					}
+				}
+				out <- entry{pi: pi, cur: cur}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+
+	newPrev := make(map[int32]float64, len(pids))
+	for e := range out {
+		newPrev[int32(e.pi.PID)] = e.cur
+		list.Processes = append(list.Processes, e.pi)
+	}
+
+	prevProcCPUMu.Lock()
+	prevProcCPU = newPrev
+	prevProcCPUMu.Unlock()
 
 	list.TotalCount = len(list.Processes)
+
+	processListMu.Lock()
+	processListCache = list
+	processListCachedAt = time.Now()
+	processListMu.Unlock()
+
 	return list, nil
 }
 
-func GetProcessDetail(pid int) (*ProcessInfo, error) {
-	// Get detailed info for a single process
-	script := `
-$p = Get-Process -Id ` + strconv.Itoa(pid) + ` -ErrorAction SilentlyContinue
-if ($p) {
-    $wmi = Get-CimInstance Win32_Process -Filter "ProcessId=$pid" -ErrorAction SilentlyContinue
-    $owner = ""
-    try { $owner = $wmi.GetOwner().User } catch {}
-    "$($p.Id)|$($p.ProcessName)|$($p.CPU)|$($p.WorkingSet64)|$($p.VirtualMemorySize64)|$($p.Threads.Count)|$($p.Path)|$owner|$($wmi.ParentProcessId)|$($wmi.CommandLine)|$($wmi.CreationDate)"
+// detailedProcessInfo fills in slower fields (cwd, IO, uptime) via gopsutil
+// for a single process where the extra latency is acceptable.
+func detailedProcessInfo(p *gpsproc.Process, totalMemory uint64) ProcessInfo {
+	pi := ProcessInfo{PID: int(p.Pid), State: "running"}
+
+	if name, err := p.Name(); err == nil {
+		pi.Name = name
+	}
+	if ppid, err := p.Ppid(); err == nil {
+		pi.PPID = int(ppid)
+	}
+	if user, err := p.Username(); err == nil {
+		pi.User = user
+	}
+	if cpu, err := p.CPUPercent(); err == nil {
+		pi.CPUPercent = cpu
+	}
+	if mem, err := p.MemoryInfo(); err == nil && mem != nil {
+		pi.MemoryBytes = mem.RSS
+		pi.VmRss = mem.RSS
+		pi.VmSize = mem.VMS
+		pi.VmSwap = mem.Swap
+		if totalMemory > 0 {
+			pi.MemoryPercent = float64(mem.RSS) / float64(totalMemory) * 100
+		}
+	}
+	if threads, err := p.NumThreads(); err == nil {
+		pi.Threads = int(threads)
+	}
+	if exe, err := p.Exe(); err == nil {
+		pi.Exe = exe
+	}
+	if cwd, err := p.Cwd(); err == nil {
+		pi.Cwd = cwd
+	}
+	if cmd, err := p.Cmdline(); err == nil && cmd != "" {
+		pi.Command = cmd
+	} else if pi.Exe != "" {
+		pi.Command = pi.Exe
+	}
+	if cmdSlice, err := p.CmdlineSlice(); err == nil && len(cmdSlice) > 0 {
+		pi.CommandLine = cmdSlice
+	}
+	if io, err := p.IOCounters(); err == nil && io != nil {
+		pi.IoReadBytes = io.ReadBytes
+		pi.IoWriteBytes = io.WriteBytes
+	}
+	if created, err := p.CreateTime(); err == nil && created > 0 {
+		uptime := time.Since(time.Unix(created/1000, 0))
+		hours := int(uptime.Hours())
+		minutes := int(uptime.Minutes()) % 60
+		pi.Uptime = fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	return pi
 }
-`
-	out, err := runPowerShell(script)
-	if err != nil || out == "" {
+
+func GetProcessDetail(pid int) (*ProcessInfo, error) {
+	p, err := gpsproc.NewProcess(int32(pid))
+	if err != nil {
 		return nil, err
 	}
 
-	parts := strings.SplitN(strings.TrimSpace(out), "|", 11)
-	if len(parts) < 6 {
-		return nil, nil
+	var totalMemory uint64
+	if vm, err := gpsmem.VirtualMemory(); err == nil {
+		totalMemory = vm.Total
 	}
 
-	pidVal, _ := strconv.Atoi(parts[0])
-	cpu, _ := strconv.ParseFloat(parts[2], 64)
-	memBytes, _ := strconv.ParseUint(parts[3], 10, 64)
-	vmSize, _ := strconv.ParseUint(parts[4], 10, 64)
-	threads, _ := strconv.Atoi(parts[5])
+	pi := detailedProcessInfo(p, totalMemory)
 
-	proc := &ProcessInfo{
-		PID:         pidVal,
-		Name:        parts[1],
-		CPUPercent:  cpu,
-		MemoryBytes: memBytes,
-		VmRss:       memBytes,
-		VmSize:      vmSize,
-		Threads:     threads,
-		State:       "running",
-	}
-
-	if len(parts) >= 7 && parts[6] != "" {
-		proc.Exe = parts[6]
-	}
-	if len(parts) >= 8 && parts[7] != "" {
-		proc.User = parts[7]
-	}
-	if len(parts) >= 9 {
-		proc.PPID, _ = strconv.Atoi(parts[8])
-	}
-	if len(parts) >= 10 && parts[9] != "" {
-		proc.Command = parts[9]
-		proc.CommandLine = strings.Fields(parts[9])
-	}
-
-	// Get memory percentage
-	memScript := `(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory`
-	memOut, _ := runPowerShell(memScript)
-	totalMem, _ := strconv.ParseUint(strings.TrimSpace(memOut), 10, 64)
-	if totalMem > 0 {
-		proc.MemoryPercent = float64(memBytes) / float64(totalMem) * 100
-	}
-
-	// Get children
-	childScript := `Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq ` + strconv.Itoa(pid) + ` } | ForEach-Object { $_.ProcessId }`
-	childOut, _ := runPowerShell(childScript)
-	for _, line := range strings.Split(childOut, "\n") {
-		if childPid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
-			proc.Children = append(proc.Children, childPid)
+	if children, err := p.Children(); err == nil {
+		for _, c := range children {
+			pi.Children = append(pi.Children, int(c.Pid))
 		}
 	}
 
-	return proc, nil
+	return &pi, nil
 }
 
 func GetProcessesByUser(username string) ([]ProcessInfo, error) {
@@ -231,22 +264,34 @@ func GetProcessesByUser(username string) ([]ProcessInfo, error) {
 
 	var result []ProcessInfo
 	for _, p := range list.Processes {
-		if strings.EqualFold(p.User, username) {
+		if strings.EqualFold(p.User, username) || strings.EqualFold(plainUser(p.User), username) {
 			result = append(result, p)
 		}
 	}
 	return result, nil
 }
 
-// KillProcess terminates a process on Windows using taskkill
+// plainUser returns just the username portion of "DOMAIN\user".
+func plainUser(s string) string {
+	if i := strings.LastIndex(s, `\`); i >= 0 {
+		return s[i+1:]
+	}
+	return s
+}
+
+// KillProcess terminates a process on Windows.
 func KillProcess(pid int, signal syscall.Signal) error {
+	if p, err := gpsproc.NewProcess(int32(pid)); err == nil {
+		if err := p.Kill(); err == nil {
+			return nil
+		}
+	}
 	cmd := exec.Command("taskkill", "/F", "/PID", strconv.Itoa(pid))
 	return cmd.Run()
 }
 
-// ReniceProcess changes process priority on Windows
+// ReniceProcess changes process priority on Windows.
 func ReniceProcess(pid int, priority int) error {
-	// Map nice-like priority to Windows priority class
 	var priorityClass string
 	switch {
 	case priority >= 15:

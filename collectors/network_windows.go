@@ -4,8 +4,10 @@ package collectors
 
 import (
 	"net"
-	"strconv"
-	"strings"
+	"sync"
+	"time"
+
+	gpsnet "github.com/shirou/gopsutil/v3/net"
 )
 
 type NetworkInterface struct {
@@ -27,105 +29,68 @@ type NetworkInfo struct {
 	TotalTxSpeed uint64             `json:"totalTxSpeed"`
 }
 
+type netIOSnapshot struct {
+	rxBytes uint64
+	txBytes uint64
+	at      time.Time
+}
+
+var (
+	prevNetIO   = map[string]netIOSnapshot{}
+	prevNetIOMu sync.Mutex
+)
+
 func GetNetworkInfo() (NetworkInfo, error) {
 	info := NetworkInfo{}
 
-	// Get interfaces from Go
-	interfaces, err := net.Interfaces()
+	ioStats, err := gpsnet.IOCounters(true)
 	if err != nil {
 		return info, err
 	}
 
-	// Get network stats using PowerShell
-	statsMap := make(map[string]struct {
-		rxBytes, txBytes uint64
-		rxSpeed, txSpeed uint64
-	})
+	now := time.Now()
+	prevNetIOMu.Lock()
+	defer prevNetIOMu.Unlock()
 
-	// Get bytes per second (speed) from performance counters
-	script := `
-Get-CimInstance Win32_PerfFormattedData_Tcpip_NetworkInterface | ForEach-Object {
-    "$($_.Name)|$($_.BytesReceivedPerSec)|$($_.BytesSentPerSec)|$($_.BytesTotalPerSec)"
-}
-`
-	out, err := runPowerShell(script)
-	if err == nil {
-		for _, line := range strings.Split(out, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			parts := strings.Split(line, "|")
-			if len(parts) >= 3 {
-				rxSpeed, _ := strconv.ParseUint(parts[1], 10, 64)
-				txSpeed, _ := strconv.ParseUint(parts[2], 10, 64)
-				statsMap[parts[0]] = struct {
-					rxBytes, txBytes uint64
-					rxSpeed, txSpeed uint64
-				}{0, 0, rxSpeed, txSpeed}
-			}
+	ifMap := map[string]net.Interface{}
+	if ifs, err := net.Interfaces(); err == nil {
+		for _, ifc := range ifs {
+			ifMap[ifc.Name] = ifc
 		}
 	}
 
-	// Get total bytes from network adapter stats
-	bytesScript := `
-Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface | ForEach-Object {
-    "$($_.Name)|$($_.BytesReceivedPerSec)|$($_.BytesSentPerSec)"
-}
-`
-	bytesOut, err := runPowerShell(bytesScript)
-	if err == nil {
-		for _, line := range strings.Split(bytesOut, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			parts := strings.Split(line, "|")
-			if len(parts) >= 3 {
-				rxBytes, _ := strconv.ParseUint(parts[1], 10, 64)
-				txBytes, _ := strconv.ParseUint(parts[2], 10, 64)
-				if existing, ok := statsMap[parts[0]]; ok {
-					existing.rxBytes = rxBytes
-					existing.txBytes = txBytes
-					statsMap[parts[0]] = existing
-				} else {
-					statsMap[parts[0]] = struct {
-						rxBytes, txBytes uint64
-						rxSpeed, txSpeed uint64
-					}{rxBytes, txBytes, 0, 0}
+	for _, s := range ioStats {
+		ni := NetworkInterface{
+			Name:    s.Name,
+			RxBytes: s.BytesRecv,
+			TxBytes: s.BytesSent,
+		}
+
+		if ifc, ok := ifMap[s.Name]; ok {
+			ni.IsUp = ifc.Flags&net.FlagUp != 0
+			ni.IsLoopback = ifc.Flags&net.FlagLoopback != 0
+			if addrs, err := ifc.Addrs(); err == nil {
+				for _, addr := range addrs {
+					ni.IPAddresses = append(ni.IPAddresses, addr.String())
 				}
 			}
 		}
-	}
 
-	for _, iface := range interfaces {
-		ni := NetworkInterface{
-			Name:       iface.Name,
-			IsUp:       iface.Flags&net.FlagUp != 0,
-			IsLoopback: iface.Flags&net.FlagLoopback != 0,
-		}
-
-		addrs, _ := iface.Addrs()
-		for _, addr := range addrs {
-			ni.IPAddresses = append(ni.IPAddresses, addr.String())
-		}
-
-		// Try to match interface name to PowerShell output
-		// Windows interface names from PowerShell are different from Go's
-		for psName, stats := range statsMap {
-			// Try various matching strategies
-			if strings.Contains(strings.ToLower(psName), strings.ToLower(iface.Name)) ||
-				strings.Contains(strings.ToLower(iface.Name), strings.ToLower(psName)) ||
-				strings.ReplaceAll(psName, " ", "") == strings.ReplaceAll(iface.Name, " ", "") {
-				ni.RxBytes = stats.rxBytes
-				ni.TxBytes = stats.txBytes
-				ni.RxSpeed = stats.rxSpeed
-				ni.TxSpeed = stats.txSpeed
-				break
+		cur := netIOSnapshot{rxBytes: s.BytesRecv, txBytes: s.BytesSent, at: now}
+		if prev, ok := prevNetIO[s.Name]; ok {
+			elapsed := now.Sub(prev.at).Seconds()
+			if elapsed > 0 {
+				if s.BytesRecv >= prev.rxBytes {
+					ni.RxSpeed = uint64(float64(s.BytesRecv-prev.rxBytes) / elapsed)
+				}
+				if s.BytesSent >= prev.txBytes {
+					ni.TxSpeed = uint64(float64(s.BytesSent-prev.txBytes) / elapsed)
+				}
 			}
 		}
+		prevNetIO[s.Name] = cur
 
-		if !ni.IsLoopback && ni.IsUp {
+		if !ni.IsLoopback {
 			info.TotalRxBytes += ni.RxBytes
 			info.TotalTxBytes += ni.TxBytes
 			info.TotalRxSpeed += ni.RxSpeed
@@ -133,16 +98,6 @@ Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface | ForEach-Object {
 		}
 
 		info.Interfaces = append(info.Interfaces, ni)
-	}
-
-	// If no matches found for interfaces, just add stats directly from PS
-	if info.TotalRxSpeed == 0 && info.TotalTxSpeed == 0 {
-		for _, stats := range statsMap {
-			info.TotalRxSpeed += stats.rxSpeed
-			info.TotalTxSpeed += stats.txSpeed
-			info.TotalRxBytes += stats.rxBytes
-			info.TotalTxBytes += stats.txBytes
-		}
 	}
 
 	return info, nil

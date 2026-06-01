@@ -6,6 +6,15 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	gpuCache    GPUInfo
+	gpuCachedAt time.Time
+	gpuMu       sync.Mutex
+	gpuTTL      = 10 * time.Second
 )
 
 type GPUInfo struct {
@@ -20,6 +29,14 @@ type GPUInfo struct {
 }
 
 func GetGPUInfo() (GPUInfo, error) {
+	gpuMu.Lock()
+	if !gpuCachedAt.IsZero() && time.Since(gpuCachedAt) < gpuTTL {
+		cached := gpuCache
+		gpuMu.Unlock()
+		return cached, nil
+	}
+	gpuMu.Unlock()
+
 	info := GPUInfo{}
 
 	// Try nvidia-smi first
@@ -53,6 +70,11 @@ func GetGPUInfo() (GPUInfo, error) {
 			}
 		}
 	}
+
+	gpuMu.Lock()
+	gpuCache = info
+	gpuCachedAt = time.Now()
+	gpuMu.Unlock()
 
 	return info, nil
 }

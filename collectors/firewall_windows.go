@@ -5,6 +5,15 @@ package collectors
 import (
 	"os/exec"
 	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	firewallCache    FirewallInfo
+	firewallCachedAt time.Time
+	firewallMu       sync.Mutex
+	firewallTTL      = 20 * time.Second
 )
 
 type FirewallRule struct {
@@ -22,6 +31,14 @@ type FirewallInfo struct {
 }
 
 func GetFirewallInfo() (FirewallInfo, error) {
+	firewallMu.Lock()
+	if !firewallCachedAt.IsZero() && time.Since(firewallCachedAt) < firewallTTL {
+		cached := firewallCache
+		firewallMu.Unlock()
+		return cached, nil
+	}
+	firewallMu.Unlock()
+
 	info := FirewallInfo{
 		Available: true,
 		Backend:   "Windows Firewall",
@@ -81,6 +98,11 @@ func GetFirewallInfo() (FirewallInfo, error) {
 			info.Rules = append(info.Rules, *currentRule)
 		}
 	}
+
+	firewallMu.Lock()
+	firewallCache = info
+	firewallCachedAt = time.Now()
+	firewallMu.Unlock()
 
 	return info, nil
 }

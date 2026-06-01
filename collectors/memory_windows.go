@@ -5,6 +5,15 @@ package collectors
 import (
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	memoryCache    MemoryInfo
+	memoryCachedAt time.Time
+	memoryMu       sync.Mutex
+	memoryTTL      = 6 * time.Second
 )
 
 type MemoryInfo struct {
@@ -22,6 +31,14 @@ type MemoryInfo struct {
 }
 
 func GetMemoryInfo() (MemoryInfo, error) {
+	memoryMu.Lock()
+	if !memoryCachedAt.IsZero() && time.Since(memoryCachedAt) < memoryTTL {
+		cached := memoryCache
+		memoryMu.Unlock()
+		return cached, nil
+	}
+	memoryMu.Unlock()
+
 	info := MemoryInfo{}
 
 	// Get memory info using PowerShell
@@ -60,6 +77,11 @@ $os.FreeVirtualMemory * 1024
 	if info.SwapTotal > 0 {
 		info.SwapPercent = float64(info.SwapUsed) / float64(info.SwapTotal) * 100
 	}
+
+	memoryMu.Lock()
+	memoryCache = info
+	memoryCachedAt = time.Now()
+	memoryMu.Unlock()
 
 	return info, nil
 }
