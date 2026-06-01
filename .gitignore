@@ -1,12 +1,18 @@
-# Binaries
-syspeek
-syspeek-*
-syspeek_hash
-process-browser
+# Compiled binaries
+/syspeek
+/syspeek-*
+/syspeek_hash
+/process-browser
 *.exe
+*.dll
+*.so
+*.dylib
 
 # Config files with secrets
 config.json
+
+# Build outputs
+/dist/syspeek*
 
 # IDE
 .idea/
